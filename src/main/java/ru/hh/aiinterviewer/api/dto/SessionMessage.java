@@ -4,8 +4,10 @@ import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 
 @Data
-public class MessageRequest {
+public class SessionMessage {
 
+  @NotBlank//TODO здесь enum
+  private String role;
   @NotBlank
-  private String message;
+  private String content;
 }
