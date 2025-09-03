@@ -1,0 +1,38 @@
+spring:
+  application:
+    name: ai-interview-backend
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/ai_interviewer}
+    username: ${DB_USERNAME:ai}
+    password: ${DB_PASSWORD:ai}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: true
+    open-in-view: false
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+  ai:
+    openai:
+      api-key: ${OPENAI_API_KEY:}
+      base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+      chat:
+        options:
+          model: ${OPENAI_MODEL:gpt-5.0}
+          temperature: 0.2
+          max-tokens: 800
+
+logging:
+  level:
+    root: INFO
+    org.springframework.web: INFO
+    org.hibernate.SQL: WARN
+
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
