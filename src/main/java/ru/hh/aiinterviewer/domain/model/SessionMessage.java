@@ -13,6 +13,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.CreationTimestamp;
+import org.springframework.ai.chat.messages.Message;
 
 @Data
 @Entity
@@ -20,7 +21,7 @@ import org.hibernate.annotations.CreationTimestamp;
 @Table(name = "messages")
 @NoArgsConstructor
 @AllArgsConstructor
-public class Message {
+public class SessionMessage {
 
   @Id
   private UUID id;
@@ -36,17 +37,21 @@ public class Message {
   @Column(name = "created_at", nullable = false)
   private OffsetDateTime createdAt;
 
-  public static Message newUserMessage(String message) {
-    return  Message.builder()
-        .role(MessageRole.USER)
+  public static SessionMessage newAssistantMessage(String message) {
+    return SessionMessage.builder()
+        .role(MessageRole.ASSISTANT)
         .content(message)
         .build();
   }
 
-  public static Message newAssistantMessage(String message) {
-    return  Message.builder()
-        .role(MessageRole.ASSISTANT)
-        .content(message)
+  public static SessionMessage from(Message message) {
+    return SessionMessage.builder()
+        .role(MessageRole.fromValue(message.getMessageType().getValue()))
+        .content(message.getText())
         .build();
+  }
+
+  public Message toMessage() {
+    return role.getMessage(content);
   }
 }

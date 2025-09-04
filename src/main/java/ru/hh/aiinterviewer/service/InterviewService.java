@@ -2,37 +2,44 @@ package ru.hh.aiinterviewer.service;
 
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.hh.aiinterviewer.api.dto.CreateSessionRequest;
 import ru.hh.aiinterviewer.api.dto.CreateSessionResponse;
 import ru.hh.aiinterviewer.api.dto.MessageResponse;
-import ru.hh.aiinterviewer.exception.NotFoundException;
+import ru.hh.aiinterviewer.domain.model.MessageTrigger;
 import ru.hh.aiinterviewer.domain.model.Session;
 import ru.hh.aiinterviewer.domain.model.SessionStatus;
 import ru.hh.aiinterviewer.domain.repository.SessionRepository;
+import ru.hh.aiinterviewer.exception.NotFoundException;
+import ru.hh.aiinterviewer.llm.Prompts;
 import ru.hh.aiinterviewer.service.dto.VacancyInfo;
+import ru.hh.aiinterviewer.utils.JsonUtils;
 
 @Service
 @RequiredArgsConstructor
 public class InterviewService {
 
+  private static final int MAX_ITERATIONS = 100;
   private static final int DEFAULT_NUM_QUESTIONS = 5;
 
   private final VacancyService vacancyService;
-  private final LLMService llmService;
   private final SessionRepository sessionRepository;
+  private final ChatClient interviewerChatClient;
+  private final ChatClient prepareInterviewPlanChatClient;
 
   @Transactional
   public CreateSessionResponse createSession(CreateSessionRequest request) {
     VacancyInfo vacancy = vacancyService.fetchVacancy(request.getVacancyUrl());
     int numQuestions = request.getNumQuestions() != null && request.getNumQuestions() > 0 ? request.getNumQuestions() : DEFAULT_NUM_QUESTIONS;
 
-    String intro = llmService.prepareInterviewPlan(
-        vacancy,
-        numQuestions,
-        request.getInstructions()
-    );
+    String interviewPlan = prepareInterviewPlanChatClient
+        .prompt()
+        .user(Prompts.getPrepareInterviewPlanPrompt(JsonUtils.toJson(vacancy), numQuestions, request.getInstructions()))
+        .call()
+        .content();
 
     Session session = Session.builder()
         .vacancyUrl(vacancy.url())
@@ -41,39 +48,12 @@ public class InterviewService {
         .numQuestions(numQuestions)
         .instructions(request.getInstructions())
         .build();
-    session.addAssistantMessage(intro);
+
+    session.addAssistantMessage(interviewPlan);
+
     sessionRepository.save(session);
 
-    return buildCreateResponse(session, intro);
-  }
-
-  private MessageResponse startInterview(Session session, String userMessage) {
-    session.startInterview(userMessage);
-    sessionRepository.save(session);
-
-    String question = llmService.generateNextQuestion(
-        session.toChatHistory(),
-        session.getVacancyTitleOrUrl(),
-        1,
-        session.getNumQuestions(),
-        session.getInstructions()
-    );
-    session.addAssistantMessage(question);
-    sessionRepository.save(session);
-
-    return buildNextQuestionMessageResponse(session, question);
-  }
-
-  private MessageResponse completeInterview(Session session, String userMessage) {
-    String feedback = llmService.generateFinalFeedback(
-        session.toChatHistory(),
-        session.getVacancyTitleOrUrl(),
-        session.getInstructions()
-    );
-    session.completeInterview(feedback);
-    sessionRepository.save(session);
-
-    return buildFeedbackMessageResponse(session, feedback);
+    return buildCreateResponse(session, interviewPlan);
   }
 
   @Transactional
@@ -87,27 +67,54 @@ public class InterviewService {
       return startInterview(session, userMessage);
     }
 
-    session.addUserMessage(userMessage);
-
-    long userAnswers = session.getUserAnswersCount();
-
-    if (userAnswers >= session.getNumQuestions()) {
-      return completeInterview(session, userMessage);
+    if (session.getMessages().size() >= MAX_ITERATIONS) {
+      return forceCompleteInterview(session, userMessage);
     }
 
-    int nextIndex = session.getNextQuestionIndex();
-    String question = llmService.generateNextQuestion(
-        session.toChatHistory(),
-        session.getVacancyTitleOrUrl(),
-        nextIndex,
-        session.getNumQuestions(),
-        session.getInstructions()
-    );
+    String assistantAnswer = performChatInteraction(session, userMessage);
 
-    session.addAssistantMessage(question);
+    if (MessageTrigger.COMPLETE.isTrigger(assistantAnswer)) {
+      return completedInterview(session, assistantAnswer);
+    }
+
+    return buildNextQuestionMessageResponse(session, assistantAnswer);
+  }
+
+  private MessageResponse startInterview(Session session, String userMessage) {
+    MessageTrigger startTrigger = MessageTrigger
+        .of(userMessage)
+        .orElse(null);
+    if (!MessageTrigger.START.equals(startTrigger)) {
+      throw new IllegalStateException("To start interview, send 'Начать интервью'");
+    }
+    session.startInterview();
+
+    String assistantAnswer = performChatInteraction(session, userMessage);
+
     sessionRepository.save(session);
 
-    return buildNextQuestionMessageResponse(session, question);
+    return buildNextQuestionMessageResponse(session, assistantAnswer);
+  }
+
+  private MessageResponse completedInterview(Session session, String feedback) {
+    session.completeInterview(feedback);
+    sessionRepository.save(session);
+    return buildFeedbackMessageResponse(session, feedback);
+  }
+
+  private MessageResponse forceCompleteInterview(Session session, String userMessage) {
+    String feedback = performChatInteraction(session, Prompts.getInterviewFinalFeedbackPrompt(userMessage));
+    session.completeInterview(feedback);
+    sessionRepository.save(session);
+    return buildFeedbackMessageResponse(session, feedback);
+  }
+
+  private String performChatInteraction(Session session, String userMessage) {
+    return interviewerChatClient.prompt()
+        .user(userMessage)
+        .advisors(advisorSpec -> advisorSpec.param(ChatMemory.CONVERSATION_ID, session.getId().toString()))
+        .call()
+        .content();
   }
 
   private MessageResponse buildNextQuestionMessageResponse(Session session, String question) {
@@ -133,5 +140,3 @@ public class InterviewService {
         .build();
   }
 }
-
-

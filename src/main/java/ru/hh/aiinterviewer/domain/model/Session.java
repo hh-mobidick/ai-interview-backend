@@ -66,17 +66,13 @@ public class Session {
   @OneToMany(fetch = FetchType.EAGER, cascade = CascadeType.ALL, orphanRemoval = true)
   @JoinColumn(name = "session_id")
   @Builder.Default
-  private List<Message> messages = new ArrayList<>();
-
-  public void addUserMessage(String message) {
-    messages.add(Message.newUserMessage(message));
-  }
+  private List<SessionMessage> messages = new ArrayList<>();
 
   public void addAssistantMessage(String message) {
-    messages.add(Message.newAssistantMessage(message));
+    messages.add(SessionMessage.newAssistantMessage(message));
   }
 
-  public void addMessage(Message message) {
+  public void addMessage(SessionMessage message) {
     messages.add(message);
   }
 
@@ -94,17 +90,10 @@ public class Session {
     }
   }
 
-  public void startInterview(String startMessage) {
+  public void startInterview() {
     if (!isPlanned()) {
       throw new IllegalStateException("Session is not in planned status");
     }
-    MessageTrigger startTrigger = MessageTrigger
-        .of(startMessage)
-        .orElse(null);
-    if (!MessageTrigger.START.equals(startTrigger)) {
-      throw new IllegalStateException("To start interview, send 'Начать интервью'");
-    }
-    addUserMessage(startMessage);
     status = SessionStatus.ONGOING;
     startedAt = OffsetDateTime.now();
   }

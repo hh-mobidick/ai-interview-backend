@@ -1,6 +1,18 @@
 package ru.hh.aiinterviewer.service.dto;
 
-import lombok.NonNull;
+import java.util.List;
 
-public record VacancyInfo(@NonNull String title, @NonNull String description, String url) {
+public record VacancyInfo(
+    String id,
+    String title,
+    String description,
+    String url,
+    String employer,
+    String experienceLevel,
+    List<String> keySkills,
+    List<String> professionalRoles,
+    List<String> specializations,
+    Snippet snippet
+) {
+  public record Snippet(String requirements, String responsibilities) {}
 }
