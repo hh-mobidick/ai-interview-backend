@@ -18,12 +18,11 @@ spring:
   ai:
     openai:
       api-key: ${OPENAI_API_KEY:}
-      base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+      project-id: ${OPENAI_API_PROJECT_ID:}
       chat:
         options:
-          model: ${OPENAI_MODEL:gpt-5.0}
-          temperature: 0.2
-          max-tokens: 800
+          model: ${OPENAI_MODEL:gpt-5}
+          temperature: 1.0
 
 logging:
   level:
