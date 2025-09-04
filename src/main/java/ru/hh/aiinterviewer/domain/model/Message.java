@@ -35,4 +35,18 @@ public class Message {
   @CreationTimestamp
   @Column(name = "created_at", nullable = false)
   private OffsetDateTime createdAt;
+
+  public static Message newUserMessage(String message) {
+    return  Message.builder()
+        .role(MessageRole.USER)
+        .content(message)
+        .build();
+  }
+
+  public static Message newAssistantMessage(String message) {
+    return  Message.builder()
+        .role(MessageRole.ASSISTANT)
+        .content(message)
+        .build();
+  }
 }

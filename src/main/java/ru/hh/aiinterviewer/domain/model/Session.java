@@ -6,8 +6,6 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OneToMany;
@@ -17,11 +15,14 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.CreationTimestamp;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.UserMessage;
 
 @Data
 @Entity
@@ -32,8 +33,8 @@ import org.hibernate.annotations.CreationTimestamp;
 public class Session {
 
   @Id
-  @GeneratedValue(strategy = GenerationType.IDENTITY)
-  private UUID id;
+  @Builder.Default
+  private UUID id = UUID.randomUUID();
 
   @Column(name = "vacancy_url", nullable = false)
   private String vacancyUrl;
@@ -64,9 +65,73 @@ public class Session {
   @OrderBy("createdAt ASC")
   @OneToMany(fetch = FetchType.EAGER, cascade = CascadeType.ALL, orphanRemoval = true)
   @JoinColumn(name = "session_id")
+  @Builder.Default
   private List<Message> messages = new ArrayList<>();
+
+  public void addUserMessage(String message) {
+    messages.add(Message.newUserMessage(message));
+  }
+
+  public void addAssistantMessage(String message) {
+    messages.add(Message.newAssistantMessage(message));
+  }
 
   public void addMessage(Message message) {
     messages.add(message);
+  }
+
+  public boolean isPlanned() {
+    return status == SessionStatus.PLANNED;
+  }
+
+  public boolean isCompleted() {
+    return status == SessionStatus.COMPLETED;
+  }
+
+  public void ensureNotCompleted() {
+    if (isCompleted()) {
+      throw new IllegalStateException("Session is already completed");
+    }
+  }
+
+  public void startInterview(String startMessage) {
+    if (!isPlanned()) {
+      throw new IllegalStateException("Session is not in planned status");
+    }
+    MessageTrigger startTrigger = MessageTrigger
+        .of(startMessage)
+        .orElse(null);
+    if (!MessageTrigger.START.equals(startTrigger)) {
+      throw new IllegalStateException("To start interview, send 'Начать интервью'");
+    }
+    addUserMessage(startMessage);
+    status = SessionStatus.ONGOING;
+    startedAt = OffsetDateTime.now();
+  }
+
+  public long getUserAnswersCount() {
+    return messages.stream().filter(m -> m.getRole() == MessageRole.USER).count();
+  }
+
+  public int getNextQuestionIndex() {
+    return (int) (getUserAnswersCount() + 1);
+  }
+
+  public void completeInterview(String feedback) {
+    addAssistantMessage(feedback);
+    status = SessionStatus.COMPLETED;
+    endedAt = OffsetDateTime.now();
+  }
+
+  public List<org.springframework.ai.chat.messages.Message> toChatHistory() {
+    return messages.stream()
+        .map(me -> me.getRole() == MessageRole.ASSISTANT
+            ? new AssistantMessage(me.getContent())
+            : new UserMessage(me.getContent()))
+        .collect(Collectors.toList());
+  }
+
+  public String getVacancyTitleOrUrl() {
+    return vacancyTitle != null ? vacancyTitle : vacancyUrl;
   }
 }
