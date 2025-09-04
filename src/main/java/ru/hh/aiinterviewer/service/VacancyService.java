@@ -2,18 +2,163 @@ package ru.hh.aiinterviewer.service;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.openai.OpenAiChatOptions;
+import org.springframework.ai.openai.api.ResponseFormat;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
-import com.fasterxml.jackson.databind.JsonNode;
 import java.net.URI;
-import java.util.ArrayList;
-import java.util.List;
-import ru.hh.aiinterviewer.service.dto.VacancyInfo;
+import ru.hh.aiinterviewer.llm.Prompts;
 import ru.hh.aiinterviewer.exception.NotFoundException;
 
 @Service
 public class VacancyService {
+
+  private static final String VACANCY_OUTPUT_SCHEMA = """
+      {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "Результат анализа вакансии",
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "position",
+          "level",
+          "key_responsibilities",
+          "required_skills",
+          "optional_skills",
+          "soft_skills",
+          "domain_knowledge",
+          "interview_focus_areas",
+          "company_specific"
+        ],
+        "properties": {
+          "position": {
+            "type": "string",
+            "description": "Название должности, как указано в вакансии",
+            "default": ""
+          },
+          "level": {
+            "type": "string",
+            "description": "Уровень позиции, если явно указан",
+            "enum": ["junior", "middle", "senior", "не указан"],
+            "default": "не указан"
+          },
+          "key_responsibilities": {
+            "type": "array",
+            "description": "Ключевые обязанности из описания вакансии",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "uniqueItems": true,
+            "default": []
+          },
+          "required_skills": {
+            "type": "object",
+            "description": "Обязательные требования (hard skills), опыт и технологии",
+            "additionalProperties": false,
+            "required": ["technical", "technologies", "experience"],
+            "properties": {
+              "technical": {
+                "type": "array",
+                "description": "Технические навыки/требования (группировать схожие, без дубликатов)",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "uniqueItems": true,
+                "default": []
+              },
+              "technologies": {
+                "type": "array",
+                "description": "Используемые технологии/инструменты (ЯП, фреймворки, платформы, системы)",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "uniqueItems": true,
+                "default": []
+              },
+              "experience": {
+                "type": "string",
+                "description": "Требуемый опыт работы (например: '3+ года в backend', 'опыт с Kubernetes')",
+                "default": ""
+              }
+            }
+          },
+          "optional_skills": {
+            "type": "array",
+            "description": "Желательные требования (nice-to-have)",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "uniqueItems": true,
+            "default": []
+          },
+          "soft_skills": {
+            "type": "array",
+            "description": "Soft skills, явно указанные в вакансии",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "uniqueItems": true,
+            "default": []
+          },
+          "domain_knowledge": {
+            "type": "array",
+            "description": "Знание предметной области (финтех, e-commerce, healthtech и т.д.), если указано",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "uniqueItems": true,
+            "default": []
+          },
+          "interview_focus_areas": {
+            "type": "array",
+            "description": "Ключевые области для проверки на интервью, выведенные из требований и обязанностей",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "uniqueItems": true,
+            "default": []
+          },
+          "company_specific": {
+            "type": "object",
+            "description": "Специфические требования/контекст компании",
+            "additionalProperties": false,
+            "required": ["industry", "product", "team_size", "methodology"],
+            "properties": {
+              "industry": {
+                "type": "string",
+                "description": "Отрасль компании (если указано)",
+                "default": ""
+              },
+              "product": {
+                "type": "string",
+                "description": "Продукт/сервис компании (если указано)",
+                "default": ""
+              },
+              "team_size": {
+                "type": "string",
+                "description": "Размер команды или диапазон (если указано)",
+                "default": ""
+              },
+              "methodology": {
+                "type": "string",
+                "description": "Методология работы (Agile/Scrum/Kanban/другое), если указано",
+                "default": ""
+              }
+            }
+          }
+        }
+      }
+      """;
 
   private static final Logger log = LoggerFactory.getLogger(VacancyService.class);
   private static final String API_BASE_URL = "https://api.hh.ru";
@@ -25,7 +170,25 @@ public class VacancyService {
       .defaultHeader("User-Agent", "ai-interview-backend/0.0.1")
       .build();
 
-  public VacancyInfo fetchVacancy(String vacancyUrl) {
+  private final ChatClient chatClient;
+
+  public VacancyService(ChatModel chatModel) {
+    this.chatClient = ChatClient.builder(chatModel)
+        .defaultOptions(OpenAiChatOptions.builder()
+            .model("gpt-5.0")
+            .temperature(0.0)
+            .topP(0.1)
+            .responseFormat(ResponseFormat.builder()
+                .jsonSchema(ResponseFormat.JsonSchema.builder()
+                    .name("vacancy")
+                    .schema(VACANCY_OUTPUT_SCHEMA)
+                    .build())
+                .build())
+            .build())
+        .build();
+  }
+
+  public String fetchVacancy(String vacancyUrl) {
     if (vacancyUrl == null || vacancyUrl.isBlank()) {
       throw new IllegalArgumentException("vacancyUrl must be provided");
     }
@@ -37,94 +200,21 @@ public class VacancyService {
 
     String endpoint = "/vacancies/" + vacancyId;
     try {
-      JsonNode root = restClient.get()
+      String response = restClient.get()
           .uri(URI.create(API_BASE_URL + endpoint))
           .retrieve()
-          .body(JsonNode.class);
+          .body(String.class);
 
-      if (root == null) {
+      if (response == null) {
         throw new NotFoundException("Vacancy not found: id=" + vacancyId);
       }
 
-      String id = getText(root, "id");
-      String title = getText(root, "name");
-      String descriptionHtml = getText(root, "description");
+      return chatClient
+          .prompt()
+          .user(Prompts.getParseVacancyPrompt(response))
+          .call()
+          .content();
 
-      String employerName = null;
-      JsonNode employerNode = root.path("employer");
-      if (!employerNode.isMissingNode()) {
-        employerName = getText(employerNode, "name");
-      }
-
-      String experienceLevel = null;
-      JsonNode experienceNode = root.path("experience");
-      if (!experienceNode.isMissingNode()) {
-        experienceLevel = getText(experienceNode, "name");
-      }
-
-      List<String> skills = new ArrayList<>();
-      JsonNode keySkillsNode = root.path("key_skills");
-      if (keySkillsNode.isArray()) {
-        for (JsonNode n : keySkillsNode) {
-          String name = getText(n, "name");
-          if (name != null && !name.isBlank()) {
-            skills.add(name);
-          }
-        }
-      }
-
-      List<String> roles = new ArrayList<>();
-      JsonNode rolesNode = root.path("professional_roles");
-      if (rolesNode.isArray()) {
-        for (JsonNode n : rolesNode) {
-          String name = getText(n, "name");
-          if (name != null && !name.isBlank()) {
-            roles.add(name);
-          }
-        }
-      }
-
-      List<String> specializations = new ArrayList<>();
-      JsonNode specsNode = root.path("specializations");
-      if (specsNode.isArray()) {
-        for (JsonNode n : specsNode) {
-          String name = getText(n, "name");
-          if (name != null && !name.isBlank()) {
-            specializations.add(name);
-          }
-        }
-      }
-
-      String requirements = null;
-      String responsibilities = null;
-      JsonNode snippetNode = root.path("snippet");
-      if (!snippetNode.isMissingNode()) {
-        requirements = getText(snippetNode, "requirement");
-        responsibilities = getText(snippetNode, "responsibility");
-      }
-
-      // Ensure required fields are present
-      if (title == null || title.isBlank()) {
-        throw new IllegalStateException("Vacancy has no title: id=" + vacancyId);
-      }
-      if (descriptionHtml == null) {
-        descriptionHtml = "";
-      }
-
-      VacancyInfo.Snippet snippet = new VacancyInfo.Snippet(requirements, responsibilities);
-
-      return new VacancyInfo(
-          id,
-          title,
-          descriptionHtml,
-          vacancyUrl,
-          employerName,
-          experienceLevel,
-          java.util.List.copyOf(skills),
-          java.util.List.copyOf(roles),
-          java.util.List.copyOf(specializations),
-          snippet
-      );
     } catch (HttpClientErrorException.NotFound e) {
       throw new NotFoundException("Vacancy not found: id=" + vacancyId);
     } catch (HttpClientErrorException e) {
@@ -155,18 +245,4 @@ public class VacancyService {
       return null;
     }
   }
-
-  private String getText(JsonNode node, String field) {
-    if (node == null || field == null) {
-      return null;
-    }
-    JsonNode value = node.get(field);
-    if (value == null || value.isNull()) {
-      return null;
-    }
-    String text = value.asText(null);
-    return text == null || text.isBlank() ? null : text;
-  }
 }
-
-

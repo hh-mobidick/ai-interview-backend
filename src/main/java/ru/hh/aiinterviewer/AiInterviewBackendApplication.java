@@ -12,6 +12,7 @@ public class AiInterviewBackendApplication {
     ApplicationContext applicationContext = SpringApplication.run(AiInterviewBackendApplication.class, args);
 
     VacancyService vacancyService = applicationContext.getBean(VacancyService.class);
+    vacancyService.fetchVacancy("https://hh.ru/vacancy/124716301");
     System.out.println();
   }
 

@@ -15,7 +15,6 @@ import ru.hh.aiinterviewer.domain.model.SessionStatus;
 import ru.hh.aiinterviewer.domain.repository.SessionRepository;
 import ru.hh.aiinterviewer.exception.NotFoundException;
 import ru.hh.aiinterviewer.llm.Prompts;
-import ru.hh.aiinterviewer.service.dto.VacancyInfo;
 import ru.hh.aiinterviewer.utils.JsonUtils;
 
 @Service
@@ -32,7 +31,7 @@ public class InterviewService {
 
   @Transactional
   public CreateSessionResponse createSession(CreateSessionRequest request) {
-    VacancyInfo vacancy = vacancyService.fetchVacancy(request.getVacancyUrl());
+    String vacancy = vacancyService.fetchVacancy(request.getVacancyUrl());
     int numQuestions = request.getNumQuestions() != null && request.getNumQuestions() > 0 ? request.getNumQuestions() : DEFAULT_NUM_QUESTIONS;
 
     String interviewPlan = prepareInterviewPlanChatClient
@@ -42,8 +41,8 @@ public class InterviewService {
         .content();
 
     Session session = Session.builder()
-        .vacancyUrl(vacancy.url())
-        .vacancyTitle(vacancy.title())
+        .vacancyUrl(request.getVacancyUrl())
+//        .vacancyTitle(vacancy.title())
         .status(SessionStatus.PLANNED)
         .numQuestions(numQuestions)
         .instructions(request.getInstructions())

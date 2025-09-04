@@ -24,7 +24,6 @@ public class SessionQueryService {
   private SessionResponse buildSessionResponse(Session session) {
     return SessionResponse.builder()
         .sessionId(session.getId().toString())
-        .vacancyTitle(session.getVacancyTitle())
         .vacancyUrl(session.getVacancyUrl())
         .status(session.getStatus() == null ? null : session.getStatus().getValue())
         .numQuestions(session.getNumQuestions())

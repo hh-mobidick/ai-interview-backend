@@ -15,14 +15,11 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-import java.util.stream.Collectors;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.CreationTimestamp;
-import org.springframework.ai.chat.messages.AssistantMessage;
-import org.springframework.ai.chat.messages.UserMessage;
 
 @Data
 @Entity
@@ -98,29 +95,9 @@ public class Session {
     startedAt = OffsetDateTime.now();
   }
 
-  public long getUserAnswersCount() {
-    return messages.stream().filter(m -> m.getRole() == MessageRole.USER).count();
-  }
-
-  public int getNextQuestionIndex() {
-    return (int) (getUserAnswersCount() + 1);
-  }
-
   public void completeInterview(String feedback) {
     addAssistantMessage(feedback);
     status = SessionStatus.COMPLETED;
     endedAt = OffsetDateTime.now();
-  }
-
-  public List<org.springframework.ai.chat.messages.Message> toChatHistory() {
-    return messages.stream()
-        .map(me -> me.getRole() == MessageRole.ASSISTANT
-            ? new AssistantMessage(me.getContent())
-            : new UserMessage(me.getContent()))
-        .collect(Collectors.toList());
-  }
-
-  public String getVacancyTitleOrUrl() {
-    return vacancyTitle != null ? vacancyTitle : vacancyUrl;
   }
 }

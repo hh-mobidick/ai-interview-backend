@@ -19,13 +19,18 @@ public class ApplicationConfig {
   private SessionRepository sessionRepository;
 
   @Bean
-  public ChatClient interviwerChatClient(ChatClient.Builder builder) {
+  public ChatClient interviewerChatClient(ChatClient.Builder builder) {
     return builder.defaultAdvisors(
             getSessionHistoryAdvisor(0),
             SimpleLoggerAdvisor.builder().order(1).build()
         )
         .defaultSystem(Prompts.getInterviewerPrompt())
         .build();
+  }
+
+  @Bean
+  public ChatClient prepareInterviewPlanChatClient(ChatClient.Builder builder) {
+    return builder.defaultAdvisors().build();
   }
 
   private Advisor getSessionHistoryAdvisor(int order) {

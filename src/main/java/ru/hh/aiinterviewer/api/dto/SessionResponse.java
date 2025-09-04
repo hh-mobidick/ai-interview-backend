@@ -10,7 +10,6 @@ import lombok.Data;
 public class SessionResponse {
 
   private String sessionId;
-  private String vacancyTitle;
   private String vacancyUrl;
   private String status;//TODO enum
   private Integer numQuestions;
