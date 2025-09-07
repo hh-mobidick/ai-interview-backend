@@ -24,17 +24,20 @@ import org.springframework.ai.chat.messages.Message;
 public class SessionMessage {
 
   @Id
-  private UUID id;
+  @Builder.Default
+  private UUID id = UUID.randomUUID();
 
   @Enumerated(EnumType.STRING)
-  @Column(name = "role", nullable = false)
+  @Column(name = "role")
   private MessageRole role;
 
-  @Column(name = "content", nullable = false)
+  private boolean internal;
+
+  @Column(name = "content")
   private String content;
 
   @CreationTimestamp
-  @Column(name = "created_at", nullable = false)
+  @Column(name = "created_at")
   private OffsetDateTime createdAt;
 
   public static SessionMessage newAssistantMessage(String message) {

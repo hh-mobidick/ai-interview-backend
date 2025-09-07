@@ -6,10 +6,8 @@ import lombok.Data;
 
 @Data
 @Builder
-public class SessionMessage {
+public class MessageRequestDto {
 
-  @NotBlank//TODO здесь enum
-  private String role;
   @NotBlank
-  private String content;
+  private String message;
 }

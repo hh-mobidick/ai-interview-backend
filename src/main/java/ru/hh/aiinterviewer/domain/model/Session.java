@@ -33,17 +33,14 @@ public class Session {
   @Builder.Default
   private UUID id = UUID.randomUUID();
 
-  @Column(name = "vacancy_url", nullable = false)
+  @Column(name = "vacancy_url")
   private String vacancyUrl;
 
-  @Column(name = "vacancy_title")
-  private String vacancyTitle;
-
   @Enumerated(EnumType.STRING)
-  @Column(name = "status", nullable = false)
+  @Column(name = "status")
   private SessionStatus status;
 
-  @Column(name = "num_questions", nullable = false)
+  @Column(name = "num_questions")
   private Integer numQuestions;
 
   @Column(name = "started_at")
@@ -56,18 +53,14 @@ public class Session {
   private String instructions;
 
   @CreationTimestamp
-  @Column(name = "created_at", nullable = false)
+  @Column(name = "created_at")
   private OffsetDateTime createdAt;
 
-  @OrderBy("createdAt ASC")
-  @OneToMany(fetch = FetchType.EAGER, cascade = CascadeType.ALL, orphanRemoval = true)
-  @JoinColumn(name = "session_id")
   @Builder.Default
+  @OrderBy("createdAt ASC")
+  @OneToMany(fetch = FetchType.EAGER, cascade = CascadeType.ALL,orphanRemoval = true)
+  @JoinColumn(name = "session_id")
   private List<SessionMessage> messages = new ArrayList<>();
-
-  public void addAssistantMessage(String message) {
-    messages.add(SessionMessage.newAssistantMessage(message));
-  }
 
   public void addMessage(SessionMessage message) {
     messages.add(message);
@@ -95,8 +88,7 @@ public class Session {
     startedAt = OffsetDateTime.now();
   }
 
-  public void completeInterview(String feedback) {
-    addAssistantMessage(feedback);
+  public void completeInterview() {
     status = SessionStatus.COMPLETED;
     endedAt = OffsetDateTime.now();
   }

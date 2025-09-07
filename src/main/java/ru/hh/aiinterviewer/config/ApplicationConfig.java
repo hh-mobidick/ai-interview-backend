@@ -9,7 +9,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import ru.hh.aiinterviewer.domain.repository.SessionRepository;
-import ru.hh.aiinterviewer.llm.Prompts;
 import ru.hh.aiinterviewer.llm.SessionChatMemory;
 
 @Configuration
@@ -24,7 +23,6 @@ public class ApplicationConfig {
             getSessionHistoryAdvisor(0),
             SimpleLoggerAdvisor.builder().order(1).build()
         )
-        .defaultSystem(Prompts.getInterviewerPrompt())
         .build();
   }
 

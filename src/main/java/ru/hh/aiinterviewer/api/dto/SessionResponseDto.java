@@ -7,14 +7,14 @@ import lombok.Data;
 
 @Data
 @Builder
-public class SessionResponse {
+public class SessionResponseDto {
 
   private String sessionId;
   private String vacancyUrl;
-  private String status;//TODO enum
+  private String status;
   private Integer numQuestions;
   private OffsetDateTime startedAt;
   private OffsetDateTime endedAt;
   private String instructions;
-  private List<SessionMessage> messages;
+  private List<SessionMessageDto> messages;
 }

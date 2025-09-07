@@ -29,7 +29,7 @@ logging:
     root: INFO
     org.springframework.web: INFO
     org.hibernate.SQL: WARN
-
+    org.springframework.ai.chat.client.advisor: DEBUG
 springdoc:
   api-docs:
     enabled: true

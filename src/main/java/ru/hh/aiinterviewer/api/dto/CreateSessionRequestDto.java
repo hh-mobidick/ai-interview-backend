@@ -7,7 +7,7 @@ import lombok.Data;
 
 @Data
 @Builder
-public class CreateSessionRequest {
+public class CreateSessionRequestDto {
 
   @NotBlank
   private String vacancyUrl;
