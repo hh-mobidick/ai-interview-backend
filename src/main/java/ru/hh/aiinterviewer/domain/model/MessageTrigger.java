@@ -9,20 +9,21 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public enum MessageTrigger {
 
-  START("начать интервью"),
-  COMPLETE("интервью завершено");
+  PLAN("План интервью"),
+  START("Начать интервью"),
+  COMPLETE("Интервью завершено");
 
   private final String value;
 
   public static Optional<MessageTrigger> of(String message) {
     String normalizedMessage = Optional.ofNullable(message).map(String::toLowerCase).map(String::trim).orElse(null);
     return Arrays.stream(MessageTrigger.values())
-        .filter(role -> role.getValue().equals(normalizedMessage))
+        .filter(role -> role.getValue().toLowerCase().equals(normalizedMessage))
         .findFirst();
   }
 
   public boolean isTrigger(String message) {
     String normalizedMessage = Optional.ofNullable(message).map(String::toLowerCase).map(String::trim).orElse(null);
-    return normalizedMessage != null && normalizedMessage.startsWith(value);
+    return normalizedMessage != null && normalizedMessage.startsWith(value.toLowerCase());
   }
 }

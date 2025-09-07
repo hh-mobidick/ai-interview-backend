@@ -5,8 +5,9 @@ import lombok.Data;
 
 @Data
 @Builder
-public class CreateSessionResponse {
+public class MessageResponseDto {
 
   private String sessionId;
-  private String introMessage;
+  private String message;
+  private boolean interviewComplete;
 }

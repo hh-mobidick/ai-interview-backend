@@ -63,10 +63,6 @@ components:
       properties:
         sessionId:
           type: string
-        vacancyTitle:
-          type: string
-          description: Название позиции (если извлечено)
-          example: "Senior Java Developer"
         vacancyUrl:
           type: string
           example: "https://hh.ru/vacancy/123456"

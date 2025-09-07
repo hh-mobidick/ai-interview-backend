@@ -6,8 +6,10 @@ import lombok.Data;
 
 @Data
 @Builder
-public class MessageRequest {
+public class SessionMessageDto {
 
   @NotBlank
-  private String message;
+  private String role;
+  @NotBlank
+  private String content;
 }

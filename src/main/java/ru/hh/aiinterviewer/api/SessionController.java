@@ -11,13 +11,13 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import ru.hh.aiinterviewer.api.dto.CreateSessionRequest;
-import ru.hh.aiinterviewer.api.dto.CreateSessionResponse;
-import ru.hh.aiinterviewer.api.dto.MessageRequest;
-import ru.hh.aiinterviewer.api.dto.MessageResponse;
-import ru.hh.aiinterviewer.api.dto.SessionResponse;
+import ru.hh.aiinterviewer.api.dto.CreateSessionRequestDto;
+import ru.hh.aiinterviewer.api.dto.CreateSessionResponseDto;
+import ru.hh.aiinterviewer.api.dto.MessageRequestDto;
+import ru.hh.aiinterviewer.api.dto.MessageResponseDto;
+import ru.hh.aiinterviewer.api.dto.SessionResponseDto;
 import ru.hh.aiinterviewer.service.InterviewService;
-import ru.hh.aiinterviewer.service.SessionQueryService;
+import ru.hh.aiinterviewer.service.InterviewQueryService;
 
 @RestController
 @RequestMapping("/sessions")
@@ -25,28 +25,28 @@ import ru.hh.aiinterviewer.service.SessionQueryService;
 public class SessionController {
 
   private final InterviewService interviewService;
-  private final SessionQueryService sessionQueryService;
+  private final InterviewQueryService sessionQueryService;
 
   @PostMapping
-  public ResponseEntity<CreateSessionResponse> create(@Valid @RequestBody CreateSessionRequest request) {
-    CreateSessionResponse response = interviewService.createSession(request);
+  public ResponseEntity<CreateSessionResponseDto> create(@Valid @RequestBody CreateSessionRequestDto request) {
+    CreateSessionResponseDto response = interviewService.createSession(request);
     return ResponseEntity.status(HttpStatus.CREATED).body(response);
   }
 
   @PostMapping("/{sessionId}/messages")
-  public ResponseEntity<MessageResponse> addMessage(
+  public ResponseEntity<MessageResponseDto> addMessage(
       @PathVariable("sessionId") String sessionId,
-      @Valid @RequestBody MessageRequest request
+      @Valid @RequestBody MessageRequestDto request
   ) {
     UUID id = UUID.fromString(sessionId);
-    MessageResponse response = interviewService.processMessage(id, request.getMessage());
+    MessageResponseDto response = interviewService.processMessage(id, request.getMessage());
     return ResponseEntity.ok(response);
   }
 
   @GetMapping("/{sessionId}")
-  public ResponseEntity<SessionResponse> get(@PathVariable("sessionId") String sessionId) {
+  public ResponseEntity<SessionResponseDto> get(@PathVariable("sessionId") String sessionId) {
     UUID id = UUID.fromString(sessionId);
-    SessionResponse response = sessionQueryService.getSession(id);
+    SessionResponseDto response = sessionQueryService.getHistory(id);
     return ResponseEntity.ok(response);
   }
 }

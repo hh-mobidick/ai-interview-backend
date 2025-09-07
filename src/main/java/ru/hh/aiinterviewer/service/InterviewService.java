@@ -6,23 +6,22 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import ru.hh.aiinterviewer.api.dto.CreateSessionRequest;
-import ru.hh.aiinterviewer.api.dto.CreateSessionResponse;
-import ru.hh.aiinterviewer.api.dto.MessageResponse;
+import ru.hh.aiinterviewer.api.dto.CreateSessionRequestDto;
+import ru.hh.aiinterviewer.api.dto.CreateSessionResponseDto;
+import ru.hh.aiinterviewer.api.dto.MessageResponseDto;
 import ru.hh.aiinterviewer.domain.model.MessageTrigger;
 import ru.hh.aiinterviewer.domain.model.Session;
+import ru.hh.aiinterviewer.domain.model.SessionMessage;
 import ru.hh.aiinterviewer.domain.model.SessionStatus;
 import ru.hh.aiinterviewer.domain.repository.SessionRepository;
 import ru.hh.aiinterviewer.exception.NotFoundException;
 import ru.hh.aiinterviewer.llm.Prompts;
-import ru.hh.aiinterviewer.utils.JsonUtils;
 
 @Service
 @RequiredArgsConstructor
 public class InterviewService {
 
   private static final int MAX_ITERATIONS = 100;
-  private static final int DEFAULT_NUM_QUESTIONS = 5;
 
   private final VacancyService vacancyService;
   private final SessionRepository sessionRepository;
@@ -30,33 +29,35 @@ public class InterviewService {
   private final ChatClient prepareInterviewPlanChatClient;
 
   @Transactional
-  public CreateSessionResponse createSession(CreateSessionRequest request) {
-    String vacancy = vacancyService.fetchVacancy(request.getVacancyUrl());
-    int numQuestions = request.getNumQuestions() != null && request.getNumQuestions() > 0 ? request.getNumQuestions() : DEFAULT_NUM_QUESTIONS;
+  public CreateSessionResponseDto createSession(CreateSessionRequestDto request) {
+    String vacancy = vacancyService.getVacancy(request.getVacancyUrl());
 
     String interviewPlan = prepareInterviewPlanChatClient
         .prompt()
-        .user(Prompts.getPrepareInterviewPlanPrompt(JsonUtils.toJson(vacancy), numQuestions, request.getInstructions()))
+        .user(Prompts.getPrepareInterviewPlanPrompt(vacancy, request.getNumQuestions(), request.getInstructions()))
         .call()
         .content();
 
-    Session session = Session.builder()
+    Session session = sessionRepository.save(Session.builder()
         .vacancyUrl(request.getVacancyUrl())
-//        .vacancyTitle(vacancy.title())
         .status(SessionStatus.PLANNED)
-        .numQuestions(numQuestions)
+        .numQuestions(request.getNumQuestions())
         .instructions(request.getInstructions())
-        .build();
+        .build());
+    sessionRepository.flush();
 
-    session.addAssistantMessage(interviewPlan);
+    String inroMessage = interviewerChatClient.prompt()
+        .advisors(advisorSpec -> advisorSpec.param(ChatMemory.CONVERSATION_ID, session.getId().toString()))
+        .system(Prompts.getInterviewerPrompt(interviewPlan, null))
+        .user(MessageTrigger.PLAN.getValue())
+        .call()
+        .content();
 
-    sessionRepository.save(session);
-
-    return buildCreateResponse(session, interviewPlan);
+    return buildCreateResponse(session, inroMessage);
   }
 
   @Transactional
-  public MessageResponse processMessage(UUID sessionId, String userMessage) {
+  public MessageResponseDto processMessage(UUID sessionId, String userMessage) {
     Session session = sessionRepository.findById(sessionId)
         .orElseThrow(() -> new NotFoundException("Session not found: " + sessionId));
 
@@ -67,7 +68,7 @@ public class InterviewService {
     }
 
     if (session.getMessages().size() >= MAX_ITERATIONS) {
-      return forceCompleteInterview(session, userMessage);
+      return forceCompleteInterview(session);
     }
 
     String assistantAnswer = performChatInteraction(session, userMessage);
@@ -79,7 +80,7 @@ public class InterviewService {
     return buildNextQuestionMessageResponse(session, assistantAnswer);
   }
 
-  private MessageResponse startInterview(Session session, String userMessage) {
+  private MessageResponseDto startInterview(Session session, String userMessage) {
     MessageTrigger startTrigger = MessageTrigger
         .of(userMessage)
         .orElse(null);
@@ -95,15 +96,15 @@ public class InterviewService {
     return buildNextQuestionMessageResponse(session, assistantAnswer);
   }
 
-  private MessageResponse completedInterview(Session session, String feedback) {
-    session.completeInterview(feedback);
+  private MessageResponseDto completedInterview(Session session, String feedback) {
+    session.completeInterview();
     sessionRepository.save(session);
     return buildFeedbackMessageResponse(session, feedback);
   }
 
-  private MessageResponse forceCompleteInterview(Session session, String userMessage) {
-    String feedback = performChatInteraction(session, Prompts.getInterviewFinalFeedbackPrompt(userMessage));
-    session.completeInterview(feedback);
+  private MessageResponseDto forceCompleteInterview(Session session) {
+    String feedback = performChatInteraction(session, MessageTrigger.COMPLETE.getValue() );
+    session.completeInterview();
     sessionRepository.save(session);
     return buildFeedbackMessageResponse(session, feedback);
   }
@@ -116,24 +117,24 @@ public class InterviewService {
         .content();
   }
 
-  private MessageResponse buildNextQuestionMessageResponse(Session session, String question) {
-    return MessageResponse.builder()
+  private MessageResponseDto buildNextQuestionMessageResponse(Session session, String question) {
+    return MessageResponseDto.builder()
         .sessionId(session.getId().toString())
         .message(question)
         .interviewComplete(false)
         .build();
   }
 
-  private MessageResponse buildFeedbackMessageResponse(Session session, String feedback) {
-    return MessageResponse.builder()
+  private MessageResponseDto buildFeedbackMessageResponse(Session session, String feedback) {
+    return MessageResponseDto.builder()
         .sessionId(session.getId().toString())
         .message(feedback)
         .interviewComplete(true)
         .build();
   }
 
-  public static CreateSessionResponse buildCreateResponse(Session session, String introMessage) {
-    return CreateSessionResponse.builder()
+  public static CreateSessionResponseDto buildCreateResponse(Session session, String introMessage) {
+    return CreateSessionResponseDto.builder()
         .sessionId(session.getId().toString())
         .introMessage(introMessage)
         .build();
