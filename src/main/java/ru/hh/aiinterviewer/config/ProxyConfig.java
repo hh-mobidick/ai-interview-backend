@@ -18,7 +18,7 @@ import java.util.Locale;
 import jakarta.annotation.PostConstruct;
 
 @Configuration
-@ConditionalOnProperty(name = "proxy", havingValue = "true", matchIfMissing = false)
+@ConditionalOnProperty(name = "proxy", havingValue = "true")
 public class ProxyConfig {
 
   @PostConstruct

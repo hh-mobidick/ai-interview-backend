@@ -2,16 +2,18 @@ package ru.hh.aiinterviewer.service;
 
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import lombok.SneakyThrows;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.memory.ChatMemory;
+import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import ru.hh.aiinterviewer.api.dto.CreateSessionRequestDto;
 import ru.hh.aiinterviewer.api.dto.CreateSessionResponseDto;
 import ru.hh.aiinterviewer.api.dto.MessageResponseDto;
 import ru.hh.aiinterviewer.domain.model.MessageTrigger;
 import ru.hh.aiinterviewer.domain.model.Session;
-import ru.hh.aiinterviewer.domain.model.SessionMessage;
 import ru.hh.aiinterviewer.domain.model.SessionStatus;
 import ru.hh.aiinterviewer.domain.repository.SessionRepository;
 import ru.hh.aiinterviewer.exception.NotFoundException;
@@ -80,6 +82,23 @@ public class InterviewService {
     return buildNextQuestionMessageResponse(session, assistantAnswer);
   }
 
+  public SseEmitter processMessageStream(UUID sessionId, String userMessage) {
+    Session session = sessionRepository.findById(sessionId)
+        .orElseThrow(() -> new NotFoundException("Session not found: " + sessionId));
+
+    session.ensureNotCompleted();
+
+    if (session.getStatus() == SessionStatus.PLANNED) {
+      return startInterviewStreaming(session, userMessage);
+    }
+
+    if (session.getMessages().size() >= MAX_ITERATIONS) {
+      return forceCompleteInterviewStreaming(session);
+    }
+
+    return performChatInteractionStreaming(session, userMessage);
+  }
+
   private MessageResponseDto startInterview(Session session, String userMessage) {
     MessageTrigger startTrigger = MessageTrigger
         .of(userMessage)
@@ -96,6 +115,20 @@ public class InterviewService {
     return buildNextQuestionMessageResponse(session, assistantAnswer);
   }
 
+  private SseEmitter startInterviewStreaming(Session session, String userMessage) {
+    MessageTrigger startTrigger = MessageTrigger
+        .of(userMessage)
+        .orElse(null);
+    if (!MessageTrigger.START.equals(startTrigger)) {
+      throw new IllegalStateException("To start interview, send 'Начать интервью'");
+    }
+    session.startInterview();
+
+    sessionRepository.save(session);
+
+    return performChatInteractionStreaming(session, userMessage);
+  }
+
   private MessageResponseDto completedInterview(Session session, String feedback) {
     session.completeInterview();
     sessionRepository.save(session);
@@ -109,12 +142,41 @@ public class InterviewService {
     return buildFeedbackMessageResponse(session, feedback);
   }
 
+  private SseEmitter forceCompleteInterviewStreaming(Session session) {
+    session.completeInterview();
+    sessionRepository.save(session);
+    return performChatInteractionStreaming(session, MessageTrigger.COMPLETE.getValue());
+  }
+
   private String performChatInteraction(Session session, String userMessage) {
     return interviewerChatClient.prompt()
         .user(userMessage)
         .advisors(advisorSpec -> advisorSpec.param(ChatMemory.CONVERSATION_ID, session.getId().toString()))
         .call()
         .content();
+  }
+
+  private SseEmitter performChatInteractionStreaming(Session session, String userMessage) {
+    SseEmitter sseEmitter = new SseEmitter(0L);
+
+    interviewerChatClient.prompt()
+        .user(userMessage)
+        .advisors(advisorSpec -> advisorSpec.param(ChatMemory.CONVERSATION_ID, session.getId().toString()))
+        .stream()
+        .chatResponse()
+        .subscribe(
+            (ChatResponse response) -> processToken(response, sseEmitter),
+            sseEmitter::completeWithError,
+            sseEmitter::complete
+        );
+
+    return sseEmitter;
+  }
+
+  @SneakyThrows
+  private static void processToken(ChatResponse response, SseEmitter emitter) {
+    var token = response.getResult().getOutput();
+    emitter.send(token);
   }
 
   private MessageResponseDto buildNextQuestionMessageResponse(Session session, String question) {

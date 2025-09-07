@@ -4,6 +4,7 @@ import jakarta.validation.Valid;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -11,6 +12,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import ru.hh.aiinterviewer.api.dto.CreateSessionRequestDto;
 import ru.hh.aiinterviewer.api.dto.CreateSessionResponseDto;
 import ru.hh.aiinterviewer.api.dto.MessageRequestDto;
@@ -41,6 +43,15 @@ public class SessionController {
     UUID id = UUID.fromString(sessionId);
     MessageResponseDto response = interviewService.processMessage(id, request.getMessage());
     return ResponseEntity.ok(response);
+  }
+
+  @PostMapping(value = "/{sessionId}/messages/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+  public SseEmitter addMessageStream(
+      @PathVariable("sessionId") String sessionId,
+      @Valid @RequestBody MessageRequestDto request
+  ) {
+    UUID id = UUID.fromString(sessionId);
+    return interviewService.processMessageStream(id, request.getMessage());
   }
 
   @GetMapping("/{sessionId}")

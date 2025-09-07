@@ -144,6 +144,44 @@ paths:
           description: Сессия завершена
         "500":
           description: Ошибка сервера
+  /sessions/{sessionId}/messages/stream:
+    post:
+      summary: Отправить сообщение пользователя и получить ответ ассистента
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MessageRequest"
+      responses:
+        "200":
+          description: Ответ ассистента
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description:
+                  SSE поток токенов ответа ассистента
+              examples:
+                stream:
+                  summary: Пример SSE потока
+                  value: |
+                    data: Вопрос 1/5. Расскажите о вашем опыте со Spring
+
+                    data:  Boot и микросервисами?
+
+        "404":
+          description: Сессия не найдена
+        "410":
+          description: Сессия завершена
+        "500":
+          description: Ошибка сервера
   /sessions/{sessionId}:
     get:
       summary: Получить состояние сессии и историю сообщений
