@@ -176,7 +176,9 @@ public class InterviewService {
   @SneakyThrows
   private static void processToken(ChatResponse response, SseEmitter emitter) {
     var token = response.getResult().getOutput();
-    emitter.send(token);
+    if (token != null) {
+      emitter.send(token.getText());
+    }
   }
 
   private MessageResponseDto buildNextQuestionMessageResponse(Session session, String question) {
