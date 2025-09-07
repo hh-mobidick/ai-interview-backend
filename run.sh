@@ -67,9 +67,21 @@ if [[ -z "${OPENAI_API_KEY:-}" ]]; then
   echo "WARNING: OPENAI_API_KEY is not set. LLM features may not work until you export it." >&2
 fi
 
-echo "App starting with DB_URL=$DB_URL"
+PROXY_ARG=""
+for arg in "$@"; do
+  case "$arg" in
+    --proxy|proxy=true)
+      PROXY_ARG="--proxy=true"
+      ;;
+    --no-proxy|proxy=false)
+      PROXY_ARG="--proxy=false"
+      ;;
+  esac
+done
+
+echo "App starting with DB_URL=$DB_URL ${PROXY_ARG:+and proxy enabled}" 
 echo "Press Ctrl+C to stop the application. Postgres will remain running in Docker."
 
-java -jar "$JAR_FILE"
+java -jar "$JAR_FILE" $PROXY_ARG
 
 
