@@ -1,13 +1,11 @@
 package ru.hh.aiinterviewer.service;
 
 import java.util.UUID;
-import java.util.function.Predicate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import ru.hh.aiinterviewer.api.dto.SessionMessageDto;
 import ru.hh.aiinterviewer.api.dto.SessionResponseDto;
 import ru.hh.aiinterviewer.domain.model.Session;
-import ru.hh.aiinterviewer.domain.model.SessionMessage;
 import ru.hh.aiinterviewer.domain.repository.SessionRepository;
 import ru.hh.aiinterviewer.exception.NotFoundException;
 
@@ -33,7 +31,6 @@ public class InterviewQueryService {
         .endedAt(session.getEndedAt())
         .instructions(session.getInstructions())
         .messages(session.getMessages().stream()
-            .filter(Predicate.not(SessionMessage::isInternal))
             .map(m -> SessionMessageDto.builder()
                 .role(m.getRole() == null ? null : m.getRole().getValue())
                 .content(m.getContent())

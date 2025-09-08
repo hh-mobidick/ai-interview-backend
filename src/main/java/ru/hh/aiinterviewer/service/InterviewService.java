@@ -44,6 +44,7 @@ public class InterviewService {
         .vacancyUrl(request.getVacancyUrl())
         .status(SessionStatus.PLANNED)
         .numQuestions(request.getNumQuestions())
+        .interviewPlan(interviewPlan)
         .instructions(request.getInstructions())
         .build());
     sessionRepository.flush();
@@ -70,13 +71,16 @@ public class InterviewService {
     }
 
     if (session.getMessages().size() >= MAX_ITERATIONS) {
-      return forceCompleteInterview(session);
+      String feedback = performChatInteraction(session, MessageTrigger.COMPLETE.getValue());
+      completedInterview(session);
+      return buildFeedbackMessageResponse(session, feedback);
     }
 
     String assistantAnswer = performChatInteraction(session, userMessage);
 
     if (MessageTrigger.COMPLETE.isTrigger(assistantAnswer)) {
-      return completedInterview(session, assistantAnswer);
+      completedInterview(session);
+      return buildFeedbackMessageResponse(session, assistantAnswer);
     }
 
     return buildNextQuestionMessageResponse(session, assistantAnswer);
@@ -129,17 +133,9 @@ public class InterviewService {
     return performChatInteractionStreaming(session, userMessage);
   }
 
-  private MessageResponseDto completedInterview(Session session, String feedback) {
+  private void completedInterview(Session session) {
     session.completeInterview();
     sessionRepository.save(session);
-    return buildFeedbackMessageResponse(session, feedback);
-  }
-
-  private MessageResponseDto forceCompleteInterview(Session session) {
-    String feedback = performChatInteraction(session, MessageTrigger.COMPLETE.getValue() );
-    session.completeInterview();
-    sessionRepository.save(session);
-    return buildFeedbackMessageResponse(session, feedback);
   }
 
   private SseEmitter forceCompleteInterviewStreaming(Session session) {
@@ -150,6 +146,7 @@ public class InterviewService {
 
   private String performChatInteraction(Session session, String userMessage) {
     return interviewerChatClient.prompt()
+        .system(Prompts.getInterviewerPrompt(session.getInterviewPlan(), null))
         .user(userMessage)
         .advisors(advisorSpec -> advisorSpec.param(ChatMemory.CONVERSATION_ID, session.getId().toString()))
         .call()
@@ -157,27 +154,37 @@ public class InterviewService {
   }
 
   private SseEmitter performChatInteractionStreaming(Session session, String userMessage) {
+    final StringBuilder answerBuilder = new StringBuilder();
     SseEmitter sseEmitter = new SseEmitter(0L);
 
     interviewerChatClient.prompt()
+        .system(Prompts.getInterviewerPrompt(session.getInterviewPlan(), null))
         .user(userMessage)
         .advisors(advisorSpec -> advisorSpec.param(ChatMemory.CONVERSATION_ID, session.getId().toString()))
         .stream()
         .chatResponse()
         .subscribe(
-            (ChatResponse response) -> processToken(response, sseEmitter),
+            (ChatResponse response) -> processToken(response, answerBuilder, sseEmitter),
             sseEmitter::completeWithError,
-            sseEmitter::complete
+            () -> onAnswerComplete(session, answerBuilder.toString())
         );
 
     return sseEmitter;
   }
 
   @SneakyThrows
-  private static void processToken(ChatResponse response, SseEmitter emitter) {
+  private void processToken(ChatResponse response, StringBuilder answerBuilder, SseEmitter emitter) {
     var token = response.getResult().getOutput();
-    if (token != null) {
+    if (token.getText() != null) {
+      answerBuilder.append(token.getText());
       emitter.send(token.getText());
+    }
+  }
+
+  @SneakyThrows
+  private void onAnswerComplete(Session session, String answer) {
+    if (MessageTrigger.COMPLETE.isTrigger(answer)) {
+      completedInterview(session);
     }
   }
 

@@ -43,14 +43,17 @@ public class Session {
   @Column(name = "num_questions")
   private Integer numQuestions;
 
+  @Column(name = "interview_plan")
+  private String interviewPlan;
+
+  @Column(name = "instructions")
+  private String instructions;
+
   @Column(name = "started_at")
   private OffsetDateTime startedAt;
 
   @Column(name = "ended_at")
   private OffsetDateTime endedAt;
-
-  @Column(name = "instructions")
-  private String instructions;
 
   @CreationTimestamp
   @Column(name = "created_at")

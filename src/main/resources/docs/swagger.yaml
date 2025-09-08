@@ -67,9 +67,7 @@ components:
           type: string
           example: "https://hh.ru/vacancy/123456"
         status:
-          type: string
-          enum: [planned, ongoing, completed]
-          example: "planned"
+          $ref: "#/components/schemas/SessionStatus"
         numQuestions:
           type: integer
           example: 5
@@ -95,6 +93,10 @@ components:
               content:
                 type: string
                 example: "Роль: ... План интервью: ... Если план подходит — нажмите 'Начать интервью'."
+    SessionStatus:
+      type: string
+      enum: [ planned, ongoing, completed ]
+      example: "planned"
 paths:
   /sessions:
     post:
@@ -146,7 +148,7 @@ paths:
           description: Ошибка сервера
   /sessions/{sessionId}/messages/stream:
     post:
-      summary: Отправить сообщение пользователя и получить ответ ассистента
+      summary: Отправить сообщение пользователя и получить ответ ассистента в виде stream
       parameters:
         - name: sessionId
           in: path
@@ -198,5 +200,23 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Session"
+        "404":
+          description: Сессия не найдена
+  /sessions/{sessionId}/status:
+    get:
+      summary: Получить состояние сессии и историю сообщений
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Состояние сессии
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionStatus"
         "404":
           description: Сессия не найдена
