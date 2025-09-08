@@ -32,8 +32,8 @@ RUN groupadd -r spring && useradd -r -g spring spring
 # Copy application
 COPY --from=builder /app/app.jar /app/app.jar
 
-# Expose Spring Boot default port
-EXPOSE 8080
+# Expose Render default port
+EXPOSE 10000
 
 # Optional JVM options can be passed via JAVA_OPTS env var
 ENV JAVA_OPTS=""

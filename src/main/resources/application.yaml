@@ -35,3 +35,7 @@ springdoc:
     enabled: true
   swagger-ui:
     enabled: true
+
+server:
+  port: ${PORT:10000}
+  address: 0.0.0.0
