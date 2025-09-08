@@ -165,8 +165,10 @@ public class InterviewService {
         .subscribe(
             (ChatResponse response) -> processToken(response, answerBuilder, sseEmitter),
             sseEmitter::completeWithError,
-            () -> onAnswerComplete(session, answerBuilder.toString())
-        );
+            () -> {
+              onAnswerComplete(session, answerBuilder.toString());
+              sseEmitter.complete();
+            });
 
     return sseEmitter;
   }
