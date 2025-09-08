@@ -70,16 +70,29 @@ fi
 PROXY_ARG=""
 for arg in "$@"; do
   case "$arg" in
-    --proxy|proxy=true)
-      PROXY_ARG="--proxy=true"
+    --proxy=*)
+      PROXY_ARG="--proxy=${arg#--proxy=}"
       ;;
-    --no-proxy|proxy=false)
-      PROXY_ARG="--proxy=false"
+    proxy=*)
+      PROXY_ARG="--proxy=${arg#proxy=}"
+      ;;
+    --proxy)
+      echo "ERROR: Use --proxy=host:port format (e.g., --proxy=proxy.local:8080)" >&2
+      exit 1
+      ;;
+    proxy|proxy=true|proxy=false|--no-proxy)
+      # Deprecated/unsupported forms; ignore but warn for clarity
+      echo "WARNING: 'proxy' flag changed. Use proxy=host:port or --proxy=host:port" >&2
       ;;
   esac
 done
 
-echo "App starting with DB_URL=$DB_URL ${PROXY_ARG:+and proxy enabled}" 
+if [[ -n "$PROXY_ARG" ]]; then
+  PROXY_VALUE="${PROXY_ARG#--proxy=}"
+  echo "App starting with DB_URL=$DB_URL and proxy=$PROXY_VALUE"
+else
+  echo "App starting with DB_URL=$DB_URL (no proxy)"
+fi
 echo "Press Ctrl+C to stop the application. Postgres will remain running in Docker."
 
 java -jar "$JAR_FILE" $PROXY_ARG
