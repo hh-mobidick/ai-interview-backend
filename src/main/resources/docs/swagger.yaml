@@ -35,6 +35,11 @@ components:
           type: string
           description: Вступительное сообщение ассистента (summary вакансии + план интервью + просьба нажать 'Начать интервью')
           example: "Роль: Senior Java Developer. Требования: Spring Boot, микросервисы... План: 1) Java Core 2) Spring 3) Системный дизайн. Если план подходит — нажмите 'Начать интервью'."
+    SessionStatusResponse:
+      type: object
+      properties:
+        status:
+          $ref: "#/components/schemas/SessionStatus"
     MessageRequest:
       type: object
       required:
@@ -217,6 +222,6 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SessionStatus"
+                $ref: "#/components/schemas/SessionStatusResponse"
         "404":
           description: Сессия не найдена
