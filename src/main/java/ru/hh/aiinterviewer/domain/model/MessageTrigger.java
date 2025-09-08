@@ -16,14 +16,22 @@ public enum MessageTrigger {
   private final String value;
 
   public static Optional<MessageTrigger> of(String message) {
-    String normalizedMessage = Optional.ofNullable(message).map(String::toLowerCase).map(String::trim).orElse(null);
+    String normalizedMessage = normalize(message);
     return Arrays.stream(MessageTrigger.values())
         .filter(role -> role.getValue().toLowerCase().equals(normalizedMessage))
         .findFirst();
   }
 
   public boolean isTrigger(String message) {
-    String normalizedMessage = Optional.ofNullable(message).map(String::toLowerCase).map(String::trim).orElse(null);
+    String normalizedMessage = normalize(message);
     return normalizedMessage != null && normalizedMessage.startsWith(value.toLowerCase());
+  }
+
+  private static String normalize(String message) {
+    return Optional.ofNullable(message)
+        .map(String::toLowerCase)
+        .map(String::trim)
+        .map(m -> m.replaceAll("<[^>]*>", ""))
+        .orElse(null);
   }
 }
