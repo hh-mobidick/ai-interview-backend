@@ -14,13 +14,12 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import ru.hh.aiinterviewer.api.dto.CreateSessionRequestDto;
-import ru.hh.aiinterviewer.api.dto.CreateSessionResponseDto;
 import ru.hh.aiinterviewer.api.dto.MessageRequestDto;
 import ru.hh.aiinterviewer.api.dto.MessageResponseDto;
 import ru.hh.aiinterviewer.api.dto.SessionResponseDto;
 import ru.hh.aiinterviewer.api.dto.SessionStatusResponseDto;
-import ru.hh.aiinterviewer.service.InterviewService;
 import ru.hh.aiinterviewer.service.InterviewQueryService;
+import ru.hh.aiinterviewer.service.InterviewService;
 
 @RestController
 @RequestMapping("/sessions")
@@ -28,11 +27,12 @@ import ru.hh.aiinterviewer.service.InterviewQueryService;
 public class SessionController {
 
   private final InterviewService interviewService;
-  private final InterviewQueryService sessionQueryService;
+  private final InterviewQueryService interviewQueryService;
 
   @PostMapping
-  public ResponseEntity<CreateSessionResponseDto> create(@Valid @RequestBody CreateSessionRequestDto request) {
-    CreateSessionResponseDto response = interviewService.createSession(request);
+  public ResponseEntity<SessionResponseDto> create(@Valid @RequestBody CreateSessionRequestDto request) {
+    UUID sessionId = interviewService.createSession(request);
+    SessionResponseDto response = interviewQueryService.getHistory(sessionId);
     return ResponseEntity.status(HttpStatus.CREATED).body(response);
   }
 
@@ -58,14 +58,14 @@ public class SessionController {
   @GetMapping("/{sessionId}")
   public ResponseEntity<SessionResponseDto> getSession(@PathVariable("sessionId") String sessionId) {
     UUID id = UUID.fromString(sessionId);
-    SessionResponseDto response = sessionQueryService.getHistory(id);
+    SessionResponseDto response = interviewQueryService.getHistory(id);
     return ResponseEntity.ok(response);
   }
 
   @GetMapping("/{sessionId}/status")
   public ResponseEntity<SessionStatusResponseDto> getSessionStatus(@PathVariable("sessionId") String sessionId) {
     UUID id = UUID.fromString(sessionId);
-    SessionStatusResponseDto response = sessionQueryService.getStatus(id);
+    SessionStatusResponseDto response = interviewQueryService.getStatus(id);
     return ResponseEntity.ok(response);
   }
 }

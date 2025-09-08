@@ -10,7 +10,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import ru.hh.aiinterviewer.api.dto.CreateSessionRequestDto;
-import ru.hh.aiinterviewer.api.dto.CreateSessionResponseDto;
 import ru.hh.aiinterviewer.api.dto.MessageResponseDto;
 import ru.hh.aiinterviewer.domain.model.MessageTrigger;
 import ru.hh.aiinterviewer.domain.model.Session;
@@ -31,7 +30,7 @@ public class InterviewService {
   private final ChatClient prepareInterviewPlanChatClient;
 
   @Transactional
-  public CreateSessionResponseDto createSession(CreateSessionRequestDto request) {
+  public UUID createSession(CreateSessionRequestDto request) {
     String vacancy = vacancyService.getVacancy(request.getVacancyUrl());
 
     String interviewPlan = prepareInterviewPlanChatClient
@@ -49,14 +48,14 @@ public class InterviewService {
         .build());
     sessionRepository.flush();
 
-    String inroMessage = interviewerChatClient.prompt()
+    interviewerChatClient.prompt()
         .advisors(advisorSpec -> advisorSpec.param(ChatMemory.CONVERSATION_ID, session.getId().toString()))
         .system(Prompts.getInterviewerPrompt(interviewPlan, null))
         .user(MessageTrigger.PLAN.getValue())
         .call()
         .content();
 
-    return buildCreateResponse(session, inroMessage);
+    return session.getId();
   }
 
   @Transactional
@@ -201,13 +200,6 @@ public class InterviewService {
         .sessionId(session.getId().toString())
         .message(feedback)
         .interviewComplete(true)
-        .build();
-  }
-
-  public static CreateSessionResponseDto buildCreateResponse(Session session, String introMessage) {
-    return CreateSessionResponseDto.builder()
-        .sessionId(session.getId().toString())
-        .introMessage(introMessage)
         .build();
   }
 }

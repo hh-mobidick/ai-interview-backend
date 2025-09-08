@@ -28,6 +28,7 @@ services:
       DB_URL: jdbc:postgresql://postgres:5432/ai_interviewer
       DB_USERNAME: ai
       DB_PASSWORD: ai
+      #PROXY: "" # proxy через который сервис будет обращаться к LLM
       OPENAI_API_KEY: ""
       OPENAI_API_PROJECT_ID: ""
     ports:
