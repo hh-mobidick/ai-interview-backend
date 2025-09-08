@@ -37,5 +37,5 @@ springdoc:
     enabled: true
 
 server:
-  port: ${PORT:10000}
-  address: 0.0.0.0
+  port: ${PORT:8080}
+  address: ${HOST:localhost}
