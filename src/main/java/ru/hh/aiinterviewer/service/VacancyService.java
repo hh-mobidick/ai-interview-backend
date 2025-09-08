@@ -7,6 +7,8 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 
 import java.net.URI;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import ru.hh.aiinterviewer.exception.NotFoundException;
 
@@ -15,6 +17,7 @@ public class VacancyService {
 
     private static final Logger log = LoggerFactory.getLogger(VacancyService.class);
     private static final String API_BASE_URL = "https://api.hh.ru";
+    private static final Pattern VACANCY_PATH_PATTERN = Pattern.compile("(?i)/vacancy/(\\d+)(?:/|$)");
 
     private final RestClient restClient = RestClient.builder()
             .baseUrl(API_BASE_URL)
@@ -59,16 +62,11 @@ public class VacancyService {
             if (path == null) {
                 return null;
             }
-            // Expected patterns: /vacancy/{id}, possibly with trailing slash
-            String[] segments = path.split("/");
-            for (int i = 0; i < segments.length - 1; i++) {
-                if ("vacancy".equalsIgnoreCase(segments[i])) {
-                    String candidate = segments[i + 1];
-                    if (candidate != null && candidate.matches("\\d+")) {
-                        return candidate;
-                    }
-                }
+            Matcher matcher = VACANCY_PATH_PATTERN.matcher(path);
+            if (matcher.find()) {
+                return matcher.group(1);
             }
+
             return null;
         } catch (IllegalArgumentException ex) {
             return null;
