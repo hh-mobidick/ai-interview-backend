@@ -18,6 +18,7 @@ import ru.hh.aiinterviewer.api.dto.MessageRequestDto;
 import ru.hh.aiinterviewer.api.dto.MessageResponseDto;
 import ru.hh.aiinterviewer.api.dto.SessionResponseDto;
 import ru.hh.aiinterviewer.api.dto.SessionStatusResponseDto;
+import ru.hh.aiinterviewer.service.InterviewQueryService;
 import ru.hh.aiinterviewer.service.InterviewService;
 
 @RestController
@@ -26,10 +27,12 @@ import ru.hh.aiinterviewer.service.InterviewService;
 public class SessionController {
 
   private final InterviewService interviewService;
+  private final InterviewQueryService interviewQueryService;
 
   @PostMapping
   public ResponseEntity<SessionResponseDto> create(@Valid @RequestBody CreateSessionRequestDto request) {
-    SessionResponseDto response = interviewService.createSession(request);
+    UUID sessionId = interviewService.createSession(request);
+    SessionResponseDto response = interviewQueryService.getHistory(sessionId);
     return ResponseEntity.status(HttpStatus.CREATED).body(response);
   }
 
@@ -55,14 +58,14 @@ public class SessionController {
   @GetMapping("/{sessionId}")
   public ResponseEntity<SessionResponseDto> getSession(@PathVariable("sessionId") String sessionId) {
     UUID id = UUID.fromString(sessionId);
-    SessionResponseDto response = interviewService.getHistory(id);
+    SessionResponseDto response = interviewQueryService.getHistory(id);
     return ResponseEntity.ok(response);
   }
 
   @GetMapping("/{sessionId}/status")
   public ResponseEntity<SessionStatusResponseDto> getSessionStatus(@PathVariable("sessionId") String sessionId) {
     UUID id = UUID.fromString(sessionId);
-    SessionStatusResponseDto response = interviewService.getStatus(id);
+    SessionStatusResponseDto response = interviewQueryService.getStatus(id);
     return ResponseEntity.ok(response);
   }
 }
