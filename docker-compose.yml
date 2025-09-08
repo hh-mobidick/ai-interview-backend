@@ -18,5 +18,22 @@ services:
       timeout: 5s
       retries: 5
 
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai-interviewer-backend
+    restart: unless-stopped
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/ai_interviewer
+      DB_USERNAME: ai
+      DB_PASSWORD: ai
+      OPENAI_API_KEY: ""
+      OPENAI_API_PROJECT_ID: ""
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+
 volumes:
   ai_pg_data:
