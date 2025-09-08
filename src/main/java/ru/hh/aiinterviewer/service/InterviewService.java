@@ -1,5 +1,6 @@
 package ru.hh.aiinterviewer.service;
 
+import java.util.Comparator;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
@@ -10,10 +11,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import ru.hh.aiinterviewer.api.dto.CreateSessionRequestDto;
-import ru.hh.aiinterviewer.api.dto.CreateSessionResponseDto;
 import ru.hh.aiinterviewer.api.dto.MessageResponseDto;
+import ru.hh.aiinterviewer.api.dto.SessionMessageDto;
+import ru.hh.aiinterviewer.api.dto.SessionResponseDto;
+import ru.hh.aiinterviewer.api.dto.SessionStatusResponseDto;
 import ru.hh.aiinterviewer.domain.model.MessageTrigger;
 import ru.hh.aiinterviewer.domain.model.Session;
+import ru.hh.aiinterviewer.domain.model.SessionMessage;
 import ru.hh.aiinterviewer.domain.model.SessionStatus;
 import ru.hh.aiinterviewer.domain.repository.SessionRepository;
 import ru.hh.aiinterviewer.exception.NotFoundException;
@@ -31,7 +35,7 @@ public class InterviewService {
   private final ChatClient prepareInterviewPlanChatClient;
 
   @Transactional
-  public CreateSessionResponseDto createSession(CreateSessionRequestDto request) {
+  public SessionResponseDto createSession(CreateSessionRequestDto request) {
     String vacancy = vacancyService.getVacancy(request.getVacancyUrl());
 
     String interviewPlan = prepareInterviewPlanChatClient
@@ -49,14 +53,14 @@ public class InterviewService {
         .build());
     sessionRepository.flush();
 
-    String inroMessage = interviewerChatClient.prompt()
+    interviewerChatClient.prompt()
         .advisors(advisorSpec -> advisorSpec.param(ChatMemory.CONVERSATION_ID, session.getId().toString()))
         .system(Prompts.getInterviewerPrompt(interviewPlan, null))
         .user(MessageTrigger.PLAN.getValue())
         .call()
         .content();
 
-    return buildCreateResponse(session, inroMessage);
+    return getHistory(session.getId());
   }
 
   @Transactional
@@ -204,10 +208,36 @@ public class InterviewService {
         .build();
   }
 
-  public static CreateSessionResponseDto buildCreateResponse(Session session, String introMessage) {
-    return CreateSessionResponseDto.builder()
+  public SessionStatusResponseDto getStatus(UUID sessionId) {
+    Session session = sessionRepository.findById(sessionId)
+        .orElseThrow(() -> new NotFoundException("Session not found: " + sessionId));
+    return SessionStatusResponseDto.builder()
+        .status(session.getStatus().getValue())
+        .build();
+  }
+
+  public SessionResponseDto getHistory(UUID sessionId) {
+    Session session = sessionRepository.findById(sessionId)
+        .orElseThrow(() -> new NotFoundException("Session not found: " + sessionId));
+    return buildSessionResponse(session);
+  }
+
+  private SessionResponseDto buildSessionResponse(Session session) {
+    return SessionResponseDto.builder()
         .sessionId(session.getId().toString())
-        .introMessage(introMessage)
+        .vacancyUrl(session.getVacancyUrl())
+        .status(session.getStatus() == null ? null : session.getStatus().getValue())
+        .numQuestions(session.getNumQuestions())
+        .startedAt(session.getStartedAt())
+        .endedAt(session.getEndedAt())
+        .instructions(session.getInstructions())
+        .messages(session.getMessages().stream()
+            .sorted(Comparator.comparing(SessionMessage::getCreatedAt))
+            .map(m -> SessionMessageDto.builder()
+                .role(m.getRole() == null ? null : m.getRole().getValue())
+                .content(m.getContent())
+                .build())
+            .toList())
         .build();
   }
 }
