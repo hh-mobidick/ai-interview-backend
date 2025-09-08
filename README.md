@@ -72,7 +72,7 @@
 ```yaml
 openapi: 3.0.3
 info:
-  title: Mock Interview API
+  title: AI Interview Backend API
   version: "1.0"
 servers:
   - url: https://api.example.com/
@@ -107,6 +107,11 @@ components:
           type: string
           description: Вступительное сообщение ассистента (summary вакансии + план интервью + просьба нажать 'Начать интервью')
           example: "Роль: Senior Java Developer. Требования: Spring Boot, микросервисы... План: 1) Java Core 2) Spring 3) Системный дизайн. Если план подходит — нажмите 'Начать интервью'."
+    SessionStatusResponse:
+      type: object
+      properties:
+        status:
+          $ref: "#/components/schemas/SessionStatus"
     MessageRequest:
       type: object
       required:
@@ -135,17 +140,11 @@ components:
       properties:
         sessionId:
           type: string
-        vacancyTitle:
-          type: string
-          description: Название позиции (если извлечено)
-          example: "Senior Java Developer"
         vacancyUrl:
           type: string
           example: "https://hh.ru/vacancy/123456"
         status:
-          type: string
-          enum: [planned, ongoing, completed]
-          example: "planned"
+          $ref: "#/components/schemas/SessionStatus"
         numQuestions:
           type: integer
           example: 5
@@ -171,6 +170,10 @@ components:
               content:
                 type: string
                 example: "Роль: ... План интервью: ... Если план подходит — нажмите 'Начать интервью'."
+    SessionStatus:
+      type: string
+      enum: [ planned, ongoing, completed ]
+      example: "planned"
 paths:
   /sessions:
     post:
@@ -220,6 +223,44 @@ paths:
           description: Сессия завершена
         "500":
           description: Ошибка сервера
+  /sessions/{sessionId}/messages/stream:
+    post:
+      summary: Отправить сообщение пользователя и получить ответ ассистента в виде stream
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MessageRequest"
+      responses:
+        "200":
+          description: Ответ ассистента
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description:
+                  SSE поток токенов ответа ассистента
+              examples:
+                stream:
+                  summary: Пример SSE потока
+                  value: |
+                    data: Вопрос 1/5. Расскажите о вашем опыте со Spring
+
+                    data:  Boot и микросервисами?
+
+        "404":
+          description: Сессия не найдена
+        "410":
+          description: Сессия завершена
+        "500":
+          description: Ошибка сервера
   /sessions/{sessionId}:
     get:
       summary: Получить состояние сессии и историю сообщений
@@ -238,3 +279,69 @@ paths:
                 $ref: "#/components/schemas/Session"
         "404":
           description: Сессия не найдена
+  /sessions/{sessionId}/status:
+    get:
+      summary: Получить состояние сессии и историю сообщений
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Состояние сессии
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionStatusResponse"
+        "404":
+          description: Сессия не найдена
+```
+
+---
+
+## Локальный запуск
+
+### Требования
+- Docker / Docker Desktop
+- Java 21
+
+### Быстрый старт
+1. Установите ключ доступа к LLM в переменную окружения (или передайте через флаг `--openai-key`, см. ниже):
+```bash
+export OPENAI_API_KEY=your_key_here
+```
+2. Запустите сервис (скрипт поднимет Postgres через Docker Compose, соберёт и запустит приложение):
+```bash
+chmod +x ./run.sh
+./run.sh
+```
+
+Приложение будет доступно на `http://localhost:8080`.
+Swagger UI: `http://localhost:8080/swagger-ui/index.html`.
+
+### Прокси для исходящих запросов в LLM
+Если доступ к LLM возможен только через прокси, передайте параметр `proxy` в формате `host:port`:
+```bash
+./run.sh --proxy=proxy.example.com:8080
+# или
+./run.sh proxy=proxy.example.com:8080
+```
+
+В этом случае исходящие запросы к LLM пойдут через указанный прокси. Если параметр не задан — прокси не используется.
+
+### Передача ключа OpenAI через флаг
+Вместо переменной окружения можно передать ключ через аргумент командной строки:
+```bash
+./run.sh --openai-key=sk-xxxx
+# или
+./run.sh openai-key=sk-xxxx
+```
+Скрипт экспортирует переменную `OPENAI_API_KEY` на время запуска приложения.
+
+### Остановка Postgres
+Скрипт оставляет контейнер БД запущенным. Остановить его можно так:
+```bash
+docker compose stop postgres
+```

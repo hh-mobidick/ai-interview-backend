@@ -63,11 +63,8 @@ export DB_URL
 export DB_USERNAME
 export DB_PASSWORD
 
-if [[ -z "${OPENAI_API_KEY:-}" ]]; then
-  echo "WARNING: OPENAI_API_KEY is not set. LLM features may not work until you export it." >&2
-fi
-
 PROXY_ARG=""
+OPENAI_KEY_ARG=""
 for arg in "$@"; do
   case "$arg" in
     --proxy=*)
@@ -84,8 +81,26 @@ for arg in "$@"; do
       # Deprecated/unsupported forms; ignore but warn for clarity
       echo "WARNING: 'proxy' flag changed. Use proxy=host:port or --proxy=host:port" >&2
       ;;
+    --openai-key=*)
+      OPENAI_KEY_ARG="${arg#--openai-key=}"
+      ;;
+    openai-key=*)
+      OPENAI_KEY_ARG="${arg#openai-key=}"
+      ;;
+    --openai-key)
+      echo "ERROR: Use --openai-key=YOUR_KEY format" >&2
+      exit 1
+      ;;
   esac
 done
+
+if [[ -n "$OPENAI_KEY_ARG" ]]; then
+  export OPENAI_API_KEY="$OPENAI_KEY_ARG"
+fi
+
+if [[ -z "${OPENAI_API_KEY:-}" ]]; then
+  echo "WARNING: OPENAI_API_KEY is not set. LLM features may not work until you provide it via env or --openai-key." >&2
+fi
 
 if [[ -n "$PROXY_ARG" ]]; then
   PROXY_VALUE="${PROXY_ARG#--proxy=}"
