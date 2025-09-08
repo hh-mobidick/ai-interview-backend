@@ -216,6 +216,45 @@ paths:
                 $ref: "#/components/schemas/MessageResponse"
         "404":
           description: Сессия не найдена
+
+---
+
+## Локальный запуск
+
+### Требования
+- Docker / Docker Desktop
+- Java 21
+
+### Быстрый старт
+1. Установите ключ доступа к LLM в переменную окружения:
+```bash
+export OPENAI_API_KEY=your_key_here
+```
+2. Запустите сервис (скрипт поднимет Postgres через Docker Compose, соберёт и запустит приложение):
+```bash
+chmod +x ./run.sh
+./run.sh
+```
+
+Приложение будет доступно на `http://localhost:8080`.
+Swagger UI: `http://localhost:8080/swagger-ui/index.html`.
+
+### Прокси для исходящих запросов в LLM
+Если доступ к LLM возможен только через прокси, передайте параметр `proxy` в формате `host:port`:
+```bash
+./run.sh --proxy=proxy.example.com:8080
+# или
+./run.sh proxy=proxy.example.com:8080
+```
+
+В этом случае исходящие запросы к LLM пойдут через указанный прокси. Если параметр не задан — прокси не используется.
+
+### Остановка Postgres
+Скрипт оставляет контейнер БД запущенным. Остановить его можно так:
+```bash
+docker compose stop postgres
+```
+
         "410":
           description: Сессия завершена
         "500":
