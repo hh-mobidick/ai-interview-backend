@@ -22,8 +22,12 @@ components:
           example: 5
         instructions:
           type: string
-          description: Кастомные инструкции для интервьюера (будут добавлены в системный промт)
+          description: Кастомные инструкции для составления интервью
           example: "Фокусируйся на практических кейсах и примерах проектов."
+        communicationStyle:
+          type: string
+          description: Особые пожелания о стиле общения
+          example: "Общение в дружелюбном, располагающем стиле на «ты»."
     SessionStatusResponse:
       type: object
       properties:

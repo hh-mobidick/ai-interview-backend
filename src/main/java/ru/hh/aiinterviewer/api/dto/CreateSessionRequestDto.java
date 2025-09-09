@@ -14,6 +14,7 @@ public class CreateSessionRequestDto {
   @Min(1)
   private Integer numQuestions;
   private String instructions;
+  private String communicationStyle;
 }
 
 

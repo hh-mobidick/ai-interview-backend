@@ -49,6 +49,9 @@ public class Session {
   @Column(name = "instructions")
   private String instructions;
 
+  @Column(name = "communication_style")
+  private String communicationStyle;
+
   @Column(name = "started_at")
   private OffsetDateTime startedAt;
 

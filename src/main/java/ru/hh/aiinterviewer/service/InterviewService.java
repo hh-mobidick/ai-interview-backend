@@ -45,12 +45,13 @@ public class InterviewService {
         .numQuestions(request.getNumQuestions())
         .interviewPlan(interviewPlan)
         .instructions(request.getInstructions())
+        .communicationStyle(request.getCommunicationStyle())
         .build());
     sessionRepository.flush();
 
     interviewerChatClient.prompt()
         .advisors(advisorSpec -> advisorSpec.param(ChatMemory.CONVERSATION_ID, session.getId().toString()))
-        .system(Prompts.getInterviewerPrompt(interviewPlan, null))
+        .system(Prompts.getInterviewerPrompt(interviewPlan, request.getCommunicationStyle()))
         .user(MessageTrigger.PLAN.getValue())
         .call()
         .content();
@@ -145,7 +146,7 @@ public class InterviewService {
 
   private String performChatInteraction(Session session, String userMessage) {
     return interviewerChatClient.prompt()
-        .system(Prompts.getInterviewerPrompt(session.getInterviewPlan(), null))
+        .system(Prompts.getInterviewerPrompt(session.getInterviewPlan(), session.getCommunicationStyle()))
         .user(userMessage)
         .advisors(advisorSpec -> advisorSpec.param(ChatMemory.CONVERSATION_ID, session.getId().toString()))
         .call()
@@ -157,7 +158,7 @@ public class InterviewService {
     SseEmitter sseEmitter = new SseEmitter(0L);
 
     interviewerChatClient.prompt()
-        .system(Prompts.getInterviewerPrompt(session.getInterviewPlan(), null))
+        .system(Prompts.getInterviewerPrompt(session.getInterviewPlan(), session.getCommunicationStyle()))
         .user(userMessage)
         .advisors(advisorSpec -> advisorSpec.param(ChatMemory.CONVERSATION_ID, session.getId().toString()))
         .stream()
@@ -168,7 +169,8 @@ public class InterviewService {
             () -> {
               onAnswerComplete(session, answerBuilder.toString());
               sseEmitter.complete();
-            });
+            }
+        );
 
     return sseEmitter;
   }
