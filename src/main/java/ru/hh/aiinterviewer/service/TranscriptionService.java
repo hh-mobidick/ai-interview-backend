@@ -18,7 +18,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class TranscriptionService {
 
-  private static final String MODEL = "whisper-1";
+  private static final String MODEL = "gpt-4o-transcribe";
 
   private final OpenAiAudioTranscriptionModel audioTranscriptionModel;
 
@@ -43,7 +43,7 @@ public class TranscriptionService {
     AudioTranscriptionResponse response = audioTranscriptionModel.call(prompt);
 
     String text = response.getResult().getOutput();
-    if (text == null || text.isBlank()) {
+    if (text.isBlank()) {
       throw new IllegalStateException("Failed to transcribe audio");
     }
     return text;
