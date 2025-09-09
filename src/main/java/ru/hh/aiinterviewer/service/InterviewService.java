@@ -10,8 +10,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import ru.hh.aiinterviewer.api.dto.CreateSessionRequestDto;
+import ru.hh.aiinterviewer.api.dto.MessageRequestDto;
 import ru.hh.aiinterviewer.api.dto.MessageResponseDto;
 import ru.hh.aiinterviewer.domain.model.MessageTrigger;
+import ru.hh.aiinterviewer.domain.model.MessageType;
 import ru.hh.aiinterviewer.domain.model.Session;
 import ru.hh.aiinterviewer.domain.model.SessionStatus;
 import ru.hh.aiinterviewer.domain.repository.SessionRepository;
@@ -29,6 +31,7 @@ public class InterviewService {
   private final SessionRepository sessionRepository;
   private final ChatClient interviewerChatClient;
   private final ChatClient prepareInterviewPlanChatClient;
+  private final TranscriptionService transcriptionService;
 
   @Transactional
   public UUID createSession(CreateSessionRequestDto request) {
@@ -59,7 +62,7 @@ public class InterviewService {
   }
 
   @Transactional
-  public MessageResponseDto processMessage(UUID sessionId, String userMessage) {
+  public MessageResponseDto processMessage(UUID sessionId, MessageRequestDto userMessage) {
     Session session = sessionRepository.findById(sessionId)
         .orElseThrow(() -> new NotFoundException("Session not found: " + sessionId));
 
@@ -74,11 +77,16 @@ public class InterviewService {
       return buildFeedbackMessageResponse(session, feedback);
     }
 
-    if (MessageTrigger.START.isTrigger(userMessage)) {
+    String userTextMessage = switch (MessageType.fromValue(userMessage.getType())) {
+      case TEXT -> userMessage.getMessage();
+      case AUDIO -> transcriptionService.transcribe(userMessage.getAudioBase64(), userMessage.getAudioMimeType());
+    };
+
+    if (MessageTrigger.START.isTrigger(userTextMessage)) {
       session.startInterview();
     }
 
-    assistantAnswer = performChatInteraction(session, userMessage);
+    assistantAnswer = performChatInteraction(session, userTextMessage);
 
     if (MessageTrigger.COMPLETE.isTrigger(assistantAnswer)) {
       session.completeInterview();
@@ -91,7 +99,7 @@ public class InterviewService {
     return buildNextMessageResponse(session, assistantAnswer);
   }
 
-  public SseEmitter processMessageStream(UUID sessionId, String userMessage) {
+  public SseEmitter processMessageStream(UUID sessionId, MessageRequestDto userMessage) {
     Session session = sessionRepository.findById(sessionId)
         .orElseThrow(() -> new NotFoundException("Session not found: " + sessionId));
 
@@ -103,13 +111,18 @@ public class InterviewService {
       return performChatInteractionStreaming(session, EXCEEDED_LIMIT_MESSAGE);
     }
 
-    if (MessageTrigger.START.isTrigger(userMessage)) {
+    String userTextMessage = switch (MessageType.fromValue(userMessage.getType())) {
+      case TEXT -> userMessage.getMessage();
+      case AUDIO -> transcriptionService.transcribe(userMessage.getAudioBase64(), userMessage.getAudioMimeType());
+    };
+
+    if (MessageTrigger.START.isTrigger(userTextMessage)) {
       session.startInterview();
     }
 
     sessionRepository.save(session);
 
-    return performChatInteractionStreaming(session, userMessage);
+    return performChatInteractionStreaming(session, userTextMessage);
   }
 
   private String performChatInteraction(Session session, String userMessage) {

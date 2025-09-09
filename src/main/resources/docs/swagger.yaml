@@ -36,12 +36,23 @@ components:
     MessageRequest:
       type: object
       required:
-        - message
+        - type
       properties:
+        type:
+          type: string
+          enum: [ text, audio ]
+          description: Тип сообщения
+          example: text
         message:
           type: string
-          description: Сообщение пользователя (например, 'Начать интервью' или ответ на вопрос)
+          description: Текст сообщения (обязательно для type=text)
           example: "Начать интервью"
+        audioBase64:
+          type: string
+          description: Бинарные данные аудио в base64 (обязательно для type=audio)
+        audioMimeType:
+          type: string
+          description: MIME-тип аудио (например, audio/webm, audio/mpeg). Обязательно для type=audio
     MessageResponse:
       type: object
       properties:

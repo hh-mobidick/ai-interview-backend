@@ -42,7 +42,7 @@ public class SessionController {
       @Valid @RequestBody MessageRequestDto request
   ) {
     UUID id = UUID.fromString(sessionId);
-    MessageResponseDto response = interviewService.processMessage(id, request.getMessage());
+    MessageResponseDto response = interviewService.processMessage(id, request);
     return ResponseEntity.ok(response);
   }
 
@@ -52,7 +52,7 @@ public class SessionController {
       @Valid @RequestBody MessageRequestDto request
   ) {
     UUID id = UUID.fromString(sessionId);
-    return interviewService.processMessageStream(id, request.getMessage());
+    return interviewService.processMessageStream(id, request);
   }
 
   @GetMapping("/{sessionId}")

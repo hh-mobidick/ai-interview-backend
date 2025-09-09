@@ -37,6 +37,7 @@ dependencies {
 	implementation("org.springframework.ai:spring-ai-advisors-vector-store")
 	implementation("org.springframework.ai:spring-ai-starter-model-openai")
 	implementation("org.springframework.ai:spring-ai-starter-vector-store-pgvector")
+	implementation("org.springframework.ai:spring-ai-openai")
 
 	runtimeOnly("org.postgresql:postgresql")
 
