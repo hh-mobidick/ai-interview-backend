@@ -100,7 +100,7 @@ public class VacancyService {
 
             return JsonUtils.toJson(info);
         } catch (Exception e) {
-            log.warn("Failed to filter vacancy JSON, returning original. cause={}", e.getMessage());
+            log.warn("Failed to filter vacancy JSON, returning original.", e);
             return rawJson;
         }
     }

@@ -39,6 +39,14 @@ public class InterviewService {
         .call()
         .content();
 
+    Session session = createSession(request, interviewPlan);
+
+    performChatInteraction(session, MessageTrigger.PLAN.getValue());
+
+    return session.getId();
+  }
+
+  private Session createSession(CreateSessionRequestDto request, String interviewPlan) {
     Session session = sessionRepository.save(Session.builder()
         .vacancyUrl(request.getVacancyUrl())
         .status(SessionStatus.PLANNED)
@@ -48,15 +56,7 @@ public class InterviewService {
         .communicationStyle(request.getCommunicationStyle())
         .build());
     sessionRepository.flush();
-
-    interviewerChatClient.prompt()
-        .advisors(advisorSpec -> advisorSpec.param(ChatMemory.CONVERSATION_ID, session.getId().toString()))
-        .system(Prompts.getInterviewerPrompt(interviewPlan, request.getCommunicationStyle()))
-        .user(MessageTrigger.PLAN.getValue())
-        .call()
-        .content();
-
-    return session.getId();
+    return session;
   }
 
   @Transactional
@@ -71,7 +71,7 @@ public class InterviewService {
     }
 
     if (session.getMessages().size() >= MAX_ITERATIONS) {
-      String feedback = performChatInteraction(session, MessageTrigger.COMPLETE.getValue());
+      String feedback = performChatInteraction(session, MessageTrigger.COMPLETE.getValue() + ". Превышен технический лимит по кол-ву сообщений :(");
       completedInterview(session);
       return buildFeedbackMessageResponse(session, feedback);
     }

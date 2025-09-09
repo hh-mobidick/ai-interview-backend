@@ -35,6 +35,7 @@ springdoc:
     enabled: true
   swagger-ui:
     enabled: true
+    url: /swagger.yaml
 
 server:
   port: 10000

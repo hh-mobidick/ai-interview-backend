@@ -95,6 +95,9 @@ public class Session {
   }
 
   public void completeInterview() {
+    if (isCompleted()) {
+      throw new IllegalStateException("Session already in completed status");
+    }
     status = SessionStatus.COMPLETED;
     endedAt = OffsetDateTime.now();
   }

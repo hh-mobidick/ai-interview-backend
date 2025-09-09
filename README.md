@@ -310,7 +310,8 @@ chmod +x ./run.sh
 ```
 
 Приложение будет доступно на `http://localhost:10000`.
-Swagger UI: `http://localhost:10000/swagger-ui/index.html`.
+
+Swagger UI: [`http://localhost:10000/swagger-ui/index.html`](http://localhost:10000/swagger-ui/index.html).
 
 ### Передача ключа OpenAI через флаг
 Вместо переменной окружения можно передать ключ через аргумент командной строки:
