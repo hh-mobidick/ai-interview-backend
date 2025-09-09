@@ -36,6 +36,8 @@ public class VacancyService {
             throw new IllegalArgumentException("vacancyUrl must be provided");
         }
 
+        vacancyUrl = vacancyUrl.trim();
+
         String vacancyId = extractVacancyId(vacancyUrl);
         if (vacancyId == null) {
             throw new IllegalArgumentException("Invalid vacancyUrl, cannot extract id: " + vacancyUrl);
