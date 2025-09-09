@@ -23,6 +23,7 @@
 3. **Проведение Q&A**
     - Всего вопросов: `numQuestions`.
     - Формат: вопрос → ответ → следующий вопрос.
+    - Ответ можно отправлять текстом или аудио; аудио автоматически транскрибируется в текст.
     - Все сообщения сохраняются в БД.
 
 4. **Завершение**
@@ -53,6 +54,7 @@
 - **GlobalExceptionHandler** — единый маппинг ошибок в корректные HTTP-ответы.
 - **InterviewService** — оркестрация сессии: смена статусов, ведение диалога, сохранение сообщений.
 - **InterviewQueryService** — выдача информации по сессии.
+- **TranscriptionService** — транскрибирует аудио (base64) пользователя в текст (Spring AI / OpenAI).
 - **VacancyService** — загрузка и нормализация описания вакансии с hh.ru.
 - **Prompts** — шаблоны промптов (план интервью, системный промпт интервьюера).
 - **SessionChatMemory** — хранение и подготовка контекста/истории сообщений для LLM по сессии.
@@ -71,224 +73,235 @@
 ```yaml
 openapi: 3.0.3
 info:
-   title: AI Interview Backend API
-   version: "1.0"
+  title: AI Interview Backend API
+  version: "1.0"
 servers:
-   - url: https://api.example.com/
-     description: Базовый URL API
+  - url: https://api.example.com/
+    description: Базовый URL API
 components:
-   schemas:
-      CreateSessionRequest:
-         type: object
-         required:
-            - vacancyUrl
-         properties:
-            vacancyUrl:
-               type: string
-               description: URL вакансии на hh.ru
-               example: "https://hh.ru/vacancy/123456"
-            numQuestions:
-               type: integer
-               description: Количество вопросов в интервью (по умолчанию 5)
-               example: 5
-            instructions:
-               type: string
-               description: Кастомные инструкции для составления интервью
-               example: "Фокусируйся на практических кейсах и примерах проектов."
-            communicationStyle:
-               type: string
-               description: Особые пожелания о стиле общения
-               example: "Общение в дружелюбном, располагающем стиле на «ты»."
-      SessionStatusResponse:
-         type: object
-         properties:
-            status:
-               $ref: "#/components/schemas/SessionStatus"
-      MessageRequest:
-         type: object
-         required:
-            - message
-         properties:
-            message:
-               type: string
-               description: Сообщение пользователя (например, 'Начать интервью' или ответ на вопрос)
-               example: "Начать интервью"
-      MessageResponse:
-         type: object
-         properties:
-            sessionId:
-               type: string
-               example: "f3c1b9be-6b2a-4d3c-9a51-5d2a1c4a1a45"
-            message:
-               type: string
-               description: Сообщение ассистента (вопрос или финальное сообщение с фидбеком)
-               example: "Вопрос 1/5. Расскажите о вашем опыте со Spring Boot..."
-            interviewComplete:
-               type: boolean
-               description: true — интервью завершено (текущее message содержит финальный фидбек)
-               example: false
-      Session:
-         type: object
-         properties:
-            sessionId:
-               type: string
-            vacancyUrl:
-               type: string
-               example: "https://hh.ru/vacancy/123456"
-            status:
-               $ref: "#/components/schemas/SessionStatus"
-            numQuestions:
-               type: integer
-               example: 5
-            startedAt:
-               type: string
-               format: date-time
-            endedAt:
-               type: string
-               format: date-time
-            instructions:
-               type: string
-               description: Кастомные инструкции (если заданы при создании)
-            messages:
-               type: array
-               description: История диалога
-               items:
-                  type: object
-                  properties:
-                     role:
-                        type: string
-                        enum: [assistant, user]
-                        example: "assistant"
-                     content:
-                        type: string
-                        example: "Роль: ... План интервью: ... Если план подходит — нажмите 'Начать интервью'."
-      SessionStatus:
-         type: string
-         enum: [ planned, ongoing, completed ]
-         example: "planned"
+  schemas:
+    CreateSessionRequest:
+      type: object
+      required:
+        - vacancyUrl
+      properties:
+        vacancyUrl:
+          type: string
+          description: URL вакансии на hh.ru
+          example: "https://hh.ru/vacancy/123456"
+        numQuestions:
+          type: integer
+          description: Количество вопросов в интервью (по умолчанию 5)
+          example: 5
+        instructions:
+          type: string
+          description: Кастомные инструкции для составления интервью
+          example: "Фокусируйся на практических кейсах и примерах проектов."
+        communicationStyle:
+          type: string
+          description: Особые пожелания о стиле общения
+          example: "Общение в дружелюбном, располагающем стиле на «ты»."
+    SessionStatusResponse:
+      type: object
+      properties:
+        status:
+          $ref: "#/components/schemas/SessionStatus"
+    MessageRequest:
+      type: object
+      required:
+        - type
+      properties:
+        type:
+          type: string
+          enum: [ text, audio ]
+          description: Тип сообщения
+          example: text
+        message:
+          type: string
+          description: Текст сообщения (обязательно для type=text)
+          example: "Начать интервью"
+        audioBase64:
+          type: string
+          description: Бинарные данные аудио в base64 (обязательно для type=audio)
+        audioMimeType:
+          type: string
+          description: MIME-тип аудио (например, audio/webm, audio/mpeg). Обязательно для type=audio
+    MessageResponse:
+      type: object
+      properties:
+        sessionId:
+          type: string
+          example: "f3c1b9be-6b2a-4d3c-9a51-5d2a1c4a1a45"
+        message:
+          type: string
+          description: Сообщение ассистента (вопрос или финальное сообщение с фидбеком)
+          example: "Вопрос 1/5. Расскажите о вашем опыте со Spring Boot..."
+        interviewComplete:
+          type: boolean
+          description: true — интервью завершено (текущее message содержит финальный фидбек)
+          example: false
+    Session:
+      type: object
+      properties:
+        sessionId:
+          type: string
+        vacancyUrl:
+          type: string
+          example: "https://hh.ru/vacancy/123456"
+        status:
+          $ref: "#/components/schemas/SessionStatus"
+        numQuestions:
+          type: integer
+          example: 5
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: string
+          format: date-time
+        instructions:
+          type: string
+          description: Кастомные инструкции (если заданы при создании)
+        messages:
+          type: array
+          description: История диалога
+          items:
+            type: object
+            properties:
+              role:
+                type: string
+                enum: [assistant, user]
+                example: "assistant"
+              content:
+                type: string
+                example: "Роль: ... План интервью: ... Если план подходит — нажмите 'Начать интервью'."
+    SessionStatus:
+      type: string
+      enum: [ planned, ongoing, completed ]
+      example: "planned"
 paths:
-   /sessions:
-      post:
-         summary: Создать новую сессию интервью
-         requestBody:
-            required: true
-            content:
-               application/json:
-                  schema:
-                     $ref: "#/components/schemas/CreateSessionRequest"
-         responses:
-            "201":
-               description: Сессия создана
-               content:
-                  application/json:
-                     schema:
-                        $ref: "#/components/schemas/Session"
-            "400":
-               description: Некорректный запрос
-            "500":
-               description: Ошибка сервера
-   /sessions/{sessionId}/messages:
-      post:
-         summary: Отправить сообщение пользователя и получить ответ ассистента
-         parameters:
-            - name: sessionId
-              in: path
-              required: true
+  /sessions:
+    post:
+      summary: Создать новую сессию интервью
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSessionRequest"
+      responses:
+        "201":
+          description: Сессия создана
+          content:
+            application/json:
               schema:
-                 type: string
-         requestBody:
-            required: true
-            content:
-               application/json:
-                  schema:
-                     $ref: "#/components/schemas/MessageRequest"
-         responses:
-            "200":
-               description: Ответ ассистента
-               content:
-                  application/json:
-                     schema:
-                        $ref: "#/components/schemas/MessageResponse"
-            "404":
-               description: Сессия не найдена
-            "410":
-               description: Сессия завершена
-            "500":
-               description: Ошибка сервера
-   /sessions/{sessionId}/messages/stream:
-      post:
-         summary: Отправить сообщение пользователя и получить ответ ассистента в виде stream
-         parameters:
-            - name: sessionId
-              in: path
-              required: true
+                $ref: "#/components/schemas/Session"
+        "400":
+          description: Некорректный запрос
+        "500":
+          description: Ошибка сервера
+  /sessions/{sessionId}/messages:
+    post:
+      summary: Отправить сообщение пользователя и получить ответ ассистента
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MessageRequest"
+      responses:
+        "200":
+          description: Ответ ассистента
+          content:
+            application/json:
               schema:
-                 type: string
-         requestBody:
-            required: true
-            content:
-               application/json:
-                  schema:
-                     $ref: "#/components/schemas/MessageRequest"
-         responses:
-            "200":
-               description: Ответ ассистента
-               content:
-                  text/event-stream:
-                     schema:
-                        type: string
-                        description:
-                           SSE поток токенов ответа ассистента
-                     examples:
-                        stream:
-                           summary: Пример SSE потока
-                           value: |
-                              data: Вопрос 1/5. Расскажите о вашем опыте со Spring
+                $ref: "#/components/schemas/MessageResponse"
+        "404":
+          description: Сессия не найдена
+        "410":
+          description: Сессия завершена
+        "500":
+          description: Ошибка сервера
+  /sessions/{sessionId}/messages/stream:
+    post:
+      summary: Отправить сообщение пользователя и получить ответ ассистента в виде stream
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MessageRequest"
+      responses:
+        "200":
+          description: Ответ ассистента
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description:
+                  SSE поток токенов ответа ассистента
+              examples:
+                stream:
+                  summary: Пример SSE потока
+                  value: |
+                    data: Вопрос 1/5. Расскажите о вашем опыте со Spring
 
-                              data:  Boot и микросервисами?
+                    data:  Boot и микросервисами?
 
-            "404":
-               description: Сессия не найдена
-            "410":
-               description: Сессия завершена
-            "500":
-               description: Ошибка сервера
-   /sessions/{sessionId}:
-      get:
-         summary: Получить состояние сессии и историю сообщений
-         parameters:
-            - name: sessionId
-              in: path
-              required: true
+        "404":
+          description: Сессия не найдена
+        "410":
+          description: Сессия завершена
+        "500":
+          description: Ошибка сервера
+  /sessions/{sessionId}:
+    get:
+      summary: Получить состояние сессии и историю сообщений
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Состояние сессии
+          content:
+            application/json:
               schema:
-                 type: string
-         responses:
-            "200":
-               description: Состояние сессии
-               content:
-                  application/json:
-                     schema:
-                        $ref: "#/components/schemas/Session"
-            "404":
-               description: Сессия не найдена
-   /sessions/{sessionId}/status:
-      get:
-         summary: Получить состояние сессии и историю сообщений
-         parameters:
-            - name: sessionId
-              in: path
-              required: true
+                $ref: "#/components/schemas/Session"
+        "404":
+          description: Сессия не найдена
+  /sessions/{sessionId}/status:
+    get:
+      summary: Получить состояние сессии и историю сообщений
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Состояние сессии
+          content:
+            application/json:
               schema:
-                 type: string
-         responses:
-            "200":
-               description: Состояние сессии
-               content:
-                  application/json:
-                     schema:
-                        $ref: "#/components/schemas/SessionStatusResponse"
-            "404":
-               description: Сессия не найдена
+                $ref: "#/components/schemas/SessionStatusResponse"
+        "404":
+          description: Сессия не найдена
 ```
 ---
 
