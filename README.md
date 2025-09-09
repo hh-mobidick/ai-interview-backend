@@ -316,7 +316,13 @@ paths:
 ```bash
 export OPENAI_API_KEY=your_key_here
 ```
-2. Запустите сервис (скрипт поднимет Postgres через Docker Compose, соберёт и запустит приложение):
+2. (Опционально) Установите токен авторизации для API:
+```bash
+export AUTH_TOKEN="$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')"
+```
+   Этот токен будет требоваться в заголовке `Authorization: Bearer <token>` для защищённых эндпоинтов.
+
+3. Запустите сервис (скрипт поднимет Postgres через Docker Compose, соберёт и запустит приложение):
 ```bash
 chmod +x ./run.sh
 ./run.sh
@@ -335,6 +341,15 @@ Swagger UI: [`http://localhost:10000/swagger-ui/index.html`](http://localhost:10
 ```
 Скрипт экспортирует переменную `OPENAI_API_KEY` на время запуска приложения.
 
+### Передача AUTH_TOKEN через флаг
+Можно передать токен авторизации напрямую в запуск:
+```bash
+./run.sh --auth-token=my-secret-token
+# или
+./run.sh auth-token=my-secret-token
+```
+Если переменная окружения `AUTH_TOKEN` или флаг не заданы, защищённые эндпоинты вернут 401.
+
 ### Прокси для исходящих запросов в LLM
 Если доступ к LLM возможен только через прокси, передайте параметр `proxy` в формате `host:port`:
 ```bash
@@ -352,6 +367,7 @@ Swagger UI: [`http://localhost:10000/swagger-ui/index.html`](http://localhost:10
 - `OPENAI_API_KEY` — обязательный ключ для доступа к LLM
 - `OPENAI_API_PROJECT_ID` — опционально, если требуется
 - `PROXY` — опционально, формат `host:port` для прокси исходящих запросов к LLM
+- `AUTH_TOKEN` — строковый токен, который должен совпадать с заголовком `Authorization: Bearer <token>`
 
 Пример фрагмента:
 ```yaml
@@ -363,6 +379,7 @@ services:
       DB_PASSWORD: ai
       OPENAI_API_KEY: "sk-..."
       OPENAI_API_PROJECT_ID: ""
+      AUTH_TOKEN: ""
       #PROXY: "proxy.example.com:8080"
 ```
 

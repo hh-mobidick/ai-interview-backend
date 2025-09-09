@@ -65,6 +65,7 @@ export DB_PASSWORD
 
 PROXY_ARG=""
 OPENAI_KEY_ARG=""
+AUTH_TOKEN_ARG=""
 for arg in "$@"; do
   case "$arg" in
     --proxy=*)
@@ -91,6 +92,16 @@ for arg in "$@"; do
       echo "ERROR: Use --openai-key=YOUR_KEY format" >&2
       exit 1
       ;;
+    --auth-token=*)
+      AUTH_TOKEN_ARG="${arg#--auth-token=}"
+      ;;
+    auth-token=*)
+      AUTH_TOKEN_ARG="${arg#auth-token=}"
+      ;;
+    --auth-token)
+      echo "ERROR: Use --auth-token=YOUR_TOKEN format" >&2
+      exit 1
+      ;;
   esac
 done
 
@@ -100,6 +111,14 @@ fi
 
 if [[ -z "${OPENAI_API_KEY:-}" ]]; then
   echo "WARNING: OPENAI_API_KEY is not set. LLM features may not work until you provide it via env or --openai-key." >&2
+fi
+
+if [[ -n "$AUTH_TOKEN_ARG" ]]; then
+  export AUTH_TOKEN="$AUTH_TOKEN_ARG"
+fi
+
+if [[ -z "${AUTH_TOKEN:-}" ]]; then
+  echo "WARNING: AUTH_TOKEN is not set. Protected endpoints will return 401 until you set it via env or --auth-token." >&2
 fi
 
 if [[ -n "$PROXY_ARG" ]]; then
