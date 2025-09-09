@@ -22,6 +22,7 @@ extra["springAiVersion"] = "1.0.1"
 
 dependencies {
 	implementation("org.springframework.boot:spring-boot-starter-web")
+	implementation("org.springframework.boot:spring-boot-starter-security")
 	implementation("org.springframework.boot:spring-boot-starter-validation")
 	implementation("jakarta.validation:jakarta.validation-api:3.1.0")
 	implementation("org.springframework.boot:spring-boot-starter-data-jpa")

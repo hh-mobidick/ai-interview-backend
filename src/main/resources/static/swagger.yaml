@@ -6,11 +6,6 @@ servers:
   - url: https://api.example.com/
     description: Базовый URL API
 components:
-  securitySchemes:
-    bearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
   schemas:
     CreateSessionRequest:
       type: object
@@ -41,23 +36,12 @@ components:
     MessageRequest:
       type: object
       required:
-        - type
+        - message
       properties:
-        type:
-          type: string
-          enum: [ text, audio ]
-          description: Тип сообщения
-          example: text
         message:
           type: string
-          description: Текст сообщения (обязательно для type=text)
+          description: Сообщение пользователя (например, 'Начать интервью' или ответ на вопрос)
           example: "Начать интервью"
-        audioBase64:
-          type: string
-          description: Бинарные данные аудио в base64 (обязательно для type=audio)
-        audioMimeType:
-          type: string
-          description: MIME-тип аудио (например, audio/webm, audio/mpeg). Обязательно для type=audio
     MessageResponse:
       type: object
       properties:
@@ -115,8 +99,6 @@ paths:
   /sessions:
     post:
       summary: Создать новую сессию интервью
-      security:
-        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -137,8 +119,6 @@ paths:
   /sessions/{sessionId}/messages:
     post:
       summary: Отправить сообщение пользователя и получить ответ ассистента
-      security:
-        - bearerAuth: []
       parameters:
         - name: sessionId
           in: path
@@ -167,8 +147,6 @@ paths:
   /sessions/{sessionId}/messages/stream:
     post:
       summary: Отправить сообщение пользователя и получить ответ ассистента в виде stream
-      security:
-        - bearerAuth: []
       parameters:
         - name: sessionId
           in: path
@@ -207,8 +185,6 @@ paths:
   /sessions/{sessionId}:
     get:
       summary: Получить состояние сессии и историю сообщений
-      security:
-        - bearerAuth: []
       parameters:
         - name: sessionId
           in: path
@@ -227,8 +203,6 @@ paths:
   /sessions/{sessionId}/status:
     get:
       summary: Получить состояние сессии и историю сообщений
-      security:
-        - bearerAuth: []
       parameters:
         - name: sessionId
           in: path
@@ -244,3 +218,5 @@ paths:
                 $ref: "#/components/schemas/SessionStatusResponse"
         "404":
           description: Сессия не найдена
+
+

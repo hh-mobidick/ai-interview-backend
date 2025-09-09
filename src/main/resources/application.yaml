@@ -40,3 +40,6 @@ springdoc:
 server:
   port: 10000
   address: 0.0.0.0
+
+auth:
+  token: ${AUTH_TOKEN:}
