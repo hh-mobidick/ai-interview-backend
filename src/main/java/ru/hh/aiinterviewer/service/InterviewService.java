@@ -70,6 +70,7 @@ public class InterviewService {
     if (session.getMessages().size() >= MAX_ITERATIONS) {
       session.completeInterview();
       String feedback = performChatInteraction(session, EXCEEDED_LIMIT_MESSAGE);
+      sessionRepository.save(session);
       return buildFeedbackMessageResponse(session, feedback);
     }
 
@@ -81,8 +82,11 @@ public class InterviewService {
 
     if (MessageTrigger.COMPLETE.isTrigger(assistantAnswer)) {
       session.completeInterview();
+      sessionRepository.save(session);
       return buildFeedbackMessageResponse(session, assistantAnswer);
     }
+
+    sessionRepository.save(session);
 
     return buildNextMessageResponse(session, assistantAnswer);
   }
@@ -95,12 +99,15 @@ public class InterviewService {
 
     if (session.getMessages().size() >= MAX_ITERATIONS) {
       session.completeInterview();
+      sessionRepository.save(session);
       return performChatInteractionStreaming(session, EXCEEDED_LIMIT_MESSAGE);
     }
 
     if (MessageTrigger.START.isTrigger(userMessage)) {
       session.startInterview();
     }
+
+    sessionRepository.save(session);
 
     return performChatInteractionStreaming(session, userMessage);
   }
@@ -149,6 +156,7 @@ public class InterviewService {
   private void onAnswerComplete(Session session, String answer) {
     if (MessageTrigger.COMPLETE.isTrigger(answer)) {
       session.completeInterview();
+      sessionRepository.save(session);
     }
   }
 
