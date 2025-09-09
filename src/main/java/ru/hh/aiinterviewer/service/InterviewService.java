@@ -23,6 +23,7 @@ import ru.hh.aiinterviewer.llm.Prompts;
 public class InterviewService {
 
   private static final int MAX_ITERATIONS = 100;
+  private static final String EXCEEDED_LIMIT_MESSAGE = MessageTrigger.COMPLETE.getValue() + ". Превышен технический лимит по кол-ву сообщений :(";
 
   private final VacancyService vacancyService;
   private final SessionRepository sessionRepository;
@@ -40,8 +41,6 @@ public class InterviewService {
         .content();
 
     Session session = createSession(request, interviewPlan);
-
-    performChatInteraction(session, MessageTrigger.PLAN.getValue());
 
     return session.getId();
   }
@@ -66,24 +65,26 @@ public class InterviewService {
 
     session.ensureNotCompleted();
 
-    if (session.getStatus() == SessionStatus.PLANNED) {
-      return startInterview(session, userMessage);
-    }
+    String assistantAnswer;
 
     if (session.getMessages().size() >= MAX_ITERATIONS) {
-      String feedback = performChatInteraction(session, MessageTrigger.COMPLETE.getValue() + ". Превышен технический лимит по кол-ву сообщений :(");
-      completedInterview(session);
+      session.completeInterview();
+      String feedback = performChatInteraction(session, EXCEEDED_LIMIT_MESSAGE);
       return buildFeedbackMessageResponse(session, feedback);
     }
 
-    String assistantAnswer = performChatInteraction(session, userMessage);
+    if (MessageTrigger.START.isTrigger(userMessage)) {
+      session.startInterview();
+    }
+
+    assistantAnswer = performChatInteraction(session, userMessage);
 
     if (MessageTrigger.COMPLETE.isTrigger(assistantAnswer)) {
-      completedInterview(session);
+      session.completeInterview();
       return buildFeedbackMessageResponse(session, assistantAnswer);
     }
 
-    return buildNextQuestionMessageResponse(session, assistantAnswer);
+    return buildNextMessageResponse(session, assistantAnswer);
   }
 
   public SseEmitter processMessageStream(UUID sessionId, String userMessage) {
@@ -92,56 +93,16 @@ public class InterviewService {
 
     session.ensureNotCompleted();
 
-    if (session.getStatus() == SessionStatus.PLANNED) {
-      return startInterviewStreaming(session, userMessage);
-    }
-
     if (session.getMessages().size() >= MAX_ITERATIONS) {
-      return forceCompleteInterviewStreaming(session);
+      session.completeInterview();
+      return performChatInteractionStreaming(session, EXCEEDED_LIMIT_MESSAGE);
+    }
+
+    if (MessageTrigger.START.isTrigger(userMessage)) {
+      session.startInterview();
     }
 
     return performChatInteractionStreaming(session, userMessage);
-  }
-
-  private MessageResponseDto startInterview(Session session, String userMessage) {
-    MessageTrigger startTrigger = MessageTrigger
-        .of(userMessage)
-        .orElse(null);
-    if (!MessageTrigger.START.equals(startTrigger)) {
-      throw new IllegalStateException("To start interview, send 'Начать интервью'");
-    }
-    session.startInterview();
-
-    String assistantAnswer = performChatInteraction(session, userMessage);
-
-    sessionRepository.save(session);
-
-    return buildNextQuestionMessageResponse(session, assistantAnswer);
-  }
-
-  private SseEmitter startInterviewStreaming(Session session, String userMessage) {
-    MessageTrigger startTrigger = MessageTrigger
-        .of(userMessage)
-        .orElse(null);
-    if (!MessageTrigger.START.equals(startTrigger)) {
-      throw new IllegalStateException("To start interview, send 'Начать интервью'");
-    }
-    session.startInterview();
-
-    sessionRepository.save(session);
-
-    return performChatInteractionStreaming(session, userMessage);
-  }
-
-  private void completedInterview(Session session) {
-    session.completeInterview();
-    sessionRepository.save(session);
-  }
-
-  private SseEmitter forceCompleteInterviewStreaming(Session session) {
-    session.completeInterview();
-    sessionRepository.save(session);
-    return performChatInteractionStreaming(session, MessageTrigger.COMPLETE.getValue());
   }
 
   private String performChatInteraction(Session session, String userMessage) {
@@ -187,14 +148,14 @@ public class InterviewService {
   @SneakyThrows
   private void onAnswerComplete(Session session, String answer) {
     if (MessageTrigger.COMPLETE.isTrigger(answer)) {
-      completedInterview(session);
+      session.completeInterview();
     }
   }
 
-  private MessageResponseDto buildNextQuestionMessageResponse(Session session, String question) {
+  private MessageResponseDto buildNextMessageResponse(Session session, String message) {
     return MessageResponseDto.builder()
         .sessionId(session.getId().toString())
-        .message(question)
+        .message(message)
         .interviewComplete(false)
         .build();
   }
