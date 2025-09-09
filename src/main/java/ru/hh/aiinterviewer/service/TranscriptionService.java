@@ -18,7 +18,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class TranscriptionService {
 
-  private static final String MODEL = "gpt-4o-transcribe";
+  private static final String MODEL = "gpt-4o-mini-transcribe";
 
   private final OpenAiAudioTranscriptionModel audioTranscriptionModel;
 
