@@ -9,13 +9,13 @@
 ## 2. Основной флоу
 
 1. **Создание сессии** (`POST /sessions`)
-    - Вход: `vacancyUrl`, опционально `numQuestions`, опционально `instructions`.
-    - Бэкенд парсит вакансию с hh.ru.
-    - Генерирует вступительное сообщение: summary вакансии + план интервью (темы).
+    - Вход: `vacancyUrl`, опционально `numQuestions`, опционально `instructions`, опционально `communicationStyle`.
+    - Бэкенд парсит вакансию с hh.ru и формирует план интервью.
+    - Генерируется вступительное сообщение: краткая сводка вакансии и план интервью.
     - Статус сессии = `planned`.
-    - Пользователь получает `sessionId` и вступительное сообщение.
+    - Ответ содержит `Session` с `sessionId`, статусом и первым сообщением (план).
 
-2. **Запуск интервью** (`POST /sessions/{id}/messages`)
+2. **Запуск интервью** (`POST /sessions/{sessionId}/messages`)
     - Пользователь отправляет `"Начать интервью"`.
     - Статус = `ongoing`.
     - Ассистент начинает интервью: задаёт по одному вопросу.
@@ -26,13 +26,7 @@
     - Все сообщения сохраняются в БД.
 
 4. **Завершение**
-    - После последнего ответа LLM формирует итоговое сообщение с фидбеком:
-        - Общая оценка (1–5).
-        - Соответствие вакансии.
-        - Сильные стороны.
-        - Слабые стороны.
-        - Оценка по каждой теме.
-        - Рекомендации по улучшению.
+    - После последнего вопроса или команды завершения ассистент выводит строку `Интервью завершено` и даёт развёрнутый фидбек (сильные/слабые стороны, соответствие вакансии, рекомендации).
     - Статус = `completed`.
 
 ---
@@ -49,20 +43,25 @@
 
 ### Технологии
 - **Java 21 + Spring Boot**
-- **Spring AI** (OpenAI GPT-4)
+- **Spring AI** (OpenAI GPT-5)
 - **Postgres** для хранения сессий и сообщений
 - **Lombok, Spring Data JPA** для удобства разработки
 - **Slf4j** для логирования промптов и диалога
 
 ### Основные компоненты
-- **SessionController** (REST API)
-- **InterviewService** (бизнес-логика интервью)
-- **VacancyService** (парсинг hh.ru вакансии)
-- **LLMService** (обёртка над Spring AI для генерации промтов и ответов)
-- **Repository слой** (`SessionRepository`, `MessageRepository`)
+- **SessionController** — REST API (`/sessions`, `/messages`, `/messages/stream`, `/status`).
+- **GlobalExceptionHandler** — единый маппинг ошибок в корректные HTTP-ответы.
+- **InterviewService** — оркестрация сессии: смена статусов, ведение диалога, сохранение сообщений.
+- **InterviewQueryService** — выдача информации по сессии.
+- **VacancyService** — загрузка и нормализация описания вакансии с hh.ru.
+- **Prompts** — шаблоны промптов (план интервью, системный промпт интервьюера).
+- **SessionChatMemory** — хранение и подготовка контекста/истории сообщений для LLM по сессии.
+- **Repository слой** — `SessionRepository` (Spring Data JPA) для сессий.
+- **Конфигурация** — `ApplicationConfig`, `ProxyConfig` (опциональный прокси для исходящих запросов), `CorsConfig`.
+- **Утилиты** — `JsonUtils`.
 
 ### Таблицы
-- **sessions**: `id, vacancy_url, vacancy_title, status, num_questions, started_at, ended_at, instructions`
+- **sessions**: `id, vacancy_url, vacancy_title, status, num_questions, instructions, communicaton_style, interview_plan, created_at, started_at, ended_at`
 - **messages**: `id, session_id, role, content, created_at`
 
 ---
@@ -72,270 +71,225 @@
 ```yaml
 openapi: 3.0.3
 info:
-  title: AI Interview Backend API
-  version: "1.0"
+   title: AI Interview Backend API
+   version: "1.0"
 servers:
-  - url: https://api.example.com/
-    description: Базовый URL API
+   - url: https://api.example.com/
+     description: Базовый URL API
 components:
-  schemas:
-    CreateSessionRequest:
-      type: object
-      required:
-        - vacancyUrl
-      properties:
-        vacancyUrl:
-          type: string
-          description: URL вакансии на hh.ru
-          example: "https://hh.ru/vacancy/123456"
-        numQuestions:
-          type: integer
-          description: Количество вопросов в интервью (по умолчанию 5)
-          example: 5
-        instructions:
-          type: string
-          description: Кастомные инструкции для интервьюера (будут добавлены в системный промт)
-          example: "Фокусируйся на практических кейсах и примерах проектов."
-    CreateSessionResponse:
-      type: object
-      properties:
-        sessionId:
-          type: string
-          description: Уникальный идентификатор сессии
-          example: "f3c1b9be-6b2a-4d3c-9a51-5d2a1c4a1a45"
-        introMessage:
-          type: string
-          description: Вступительное сообщение ассистента (summary вакансии + план интервью + просьба нажать 'Начать интервью')
-          example: "Роль: Senior Java Developer. Требования: Spring Boot, микросервисы... План: 1) Java Core 2) Spring 3) Системный дизайн. Если план подходит — нажмите 'Начать интервью'."
-    SessionStatusResponse:
-      type: object
-      properties:
-        status:
-          $ref: "#/components/schemas/SessionStatus"
-    MessageRequest:
-      type: object
-      required:
-        - message
-      properties:
-        message:
-          type: string
-          description: Сообщение пользователя (например, 'Начать интервью' или ответ на вопрос)
-          example: "Начать интервью"
-    MessageResponse:
-      type: object
-      properties:
-        sessionId:
-          type: string
-          example: "f3c1b9be-6b2a-4d3c-9a51-5d2a1c4a1a45"
-        message:
-          type: string
-          description: Сообщение ассистента (вопрос или финальное сообщение с фидбеком)
-          example: "Вопрос 1/5. Расскажите о вашем опыте со Spring Boot..."
-        interviewComplete:
-          type: boolean
-          description: true — интервью завершено (текущее message содержит финальный фидбек)
-          example: false
-    Session:
-      type: object
-      properties:
-        sessionId:
-          type: string
-        vacancyUrl:
-          type: string
-          example: "https://hh.ru/vacancy/123456"
-        status:
-          $ref: "#/components/schemas/SessionStatus"
-        numQuestions:
-          type: integer
-          example: 5
-        startedAt:
-          type: string
-          format: date-time
-        endedAt:
-          type: string
-          format: date-time
-        instructions:
-          type: string
-          description: Кастомные инструкции (если заданы при создании)
-        messages:
-          type: array
-          description: История диалога
-          items:
-            type: object
-            properties:
-              role:
-                type: string
-                enum: [assistant, user]
-                example: "assistant"
-              content:
-                type: string
-                example: "Роль: ... План интервью: ... Если план подходит — нажмите 'Начать интервью'."
-    SessionStatus:
-      type: string
-      enum: [ planned, ongoing, completed ]
-      example: "planned"
+   schemas:
+      CreateSessionRequest:
+         type: object
+         required:
+            - vacancyUrl
+         properties:
+            vacancyUrl:
+               type: string
+               description: URL вакансии на hh.ru
+               example: "https://hh.ru/vacancy/123456"
+            numQuestions:
+               type: integer
+               description: Количество вопросов в интервью (по умолчанию 5)
+               example: 5
+            instructions:
+               type: string
+               description: Кастомные инструкции для составления интервью
+               example: "Фокусируйся на практических кейсах и примерах проектов."
+            communicationStyle:
+               type: string
+               description: Особые пожелания о стиле общения
+               example: "Общение в дружелюбном, располагающем стиле на «ты»."
+      SessionStatusResponse:
+         type: object
+         properties:
+            status:
+               $ref: "#/components/schemas/SessionStatus"
+      MessageRequest:
+         type: object
+         required:
+            - message
+         properties:
+            message:
+               type: string
+               description: Сообщение пользователя (например, 'Начать интервью' или ответ на вопрос)
+               example: "Начать интервью"
+      MessageResponse:
+         type: object
+         properties:
+            sessionId:
+               type: string
+               example: "f3c1b9be-6b2a-4d3c-9a51-5d2a1c4a1a45"
+            message:
+               type: string
+               description: Сообщение ассистента (вопрос или финальное сообщение с фидбеком)
+               example: "Вопрос 1/5. Расскажите о вашем опыте со Spring Boot..."
+            interviewComplete:
+               type: boolean
+               description: true — интервью завершено (текущее message содержит финальный фидбек)
+               example: false
+      Session:
+         type: object
+         properties:
+            sessionId:
+               type: string
+            vacancyUrl:
+               type: string
+               example: "https://hh.ru/vacancy/123456"
+            status:
+               $ref: "#/components/schemas/SessionStatus"
+            numQuestions:
+               type: integer
+               example: 5
+            startedAt:
+               type: string
+               format: date-time
+            endedAt:
+               type: string
+               format: date-time
+            instructions:
+               type: string
+               description: Кастомные инструкции (если заданы при создании)
+            messages:
+               type: array
+               description: История диалога
+               items:
+                  type: object
+                  properties:
+                     role:
+                        type: string
+                        enum: [assistant, user]
+                        example: "assistant"
+                     content:
+                        type: string
+                        example: "Роль: ... План интервью: ... Если план подходит — нажмите 'Начать интервью'."
+      SessionStatus:
+         type: string
+         enum: [ planned, ongoing, completed ]
+         example: "planned"
 paths:
-  /sessions:
-    post:
-      summary: Создать новую сессию интервью
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateSessionRequest"
-      responses:
-        "201":
-          description: Сессия создана
-          content:
-            application/json:
+   /sessions:
+      post:
+         summary: Создать новую сессию интервью
+         requestBody:
+            required: true
+            content:
+               application/json:
+                  schema:
+                     $ref: "#/components/schemas/CreateSessionRequest"
+         responses:
+            "201":
+               description: Сессия создана
+               content:
+                  application/json:
+                     schema:
+                        $ref: "#/components/schemas/Session"
+            "400":
+               description: Некорректный запрос
+            "500":
+               description: Ошибка сервера
+   /sessions/{sessionId}/messages:
+      post:
+         summary: Отправить сообщение пользователя и получить ответ ассистента
+         parameters:
+            - name: sessionId
+              in: path
+              required: true
               schema:
-                $ref: "#/components/schemas/CreateSessionResponse"
-        "400":
-          description: Некорректный запрос
-        "500":
-          description: Ошибка сервера
-  /sessions/{sessionId}/messages:
-    post:
-      summary: Отправить сообщение пользователя и получить ответ ассистента
-      parameters:
-        - name: sessionId
-          in: path
-          required: true
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/MessageRequest"
-      responses:
-        "200":
-          description: Ответ ассистента
-          content:
-            application/json:
+                 type: string
+         requestBody:
+            required: true
+            content:
+               application/json:
+                  schema:
+                     $ref: "#/components/schemas/MessageRequest"
+         responses:
+            "200":
+               description: Ответ ассистента
+               content:
+                  application/json:
+                     schema:
+                        $ref: "#/components/schemas/MessageResponse"
+            "404":
+               description: Сессия не найдена
+            "410":
+               description: Сессия завершена
+            "500":
+               description: Ошибка сервера
+   /sessions/{sessionId}/messages/stream:
+      post:
+         summary: Отправить сообщение пользователя и получить ответ ассистента в виде stream
+         parameters:
+            - name: sessionId
+              in: path
+              required: true
               schema:
-                $ref: "#/components/schemas/MessageResponse"
-        "404":
-          description: Сессия не найдена
-        "410":
-          description: Сессия завершена
-        "500":
-          description: Ошибка сервера
-  /sessions/{sessionId}/messages/stream:
-    post:
-      summary: Отправить сообщение пользователя и получить ответ ассистента в виде stream
-      parameters:
-        - name: sessionId
-          in: path
-          required: true
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/MessageRequest"
-      responses:
-        "200":
-          description: Ответ ассистента
-          content:
-            text/event-stream:
+                 type: string
+         requestBody:
+            required: true
+            content:
+               application/json:
+                  schema:
+                     $ref: "#/components/schemas/MessageRequest"
+         responses:
+            "200":
+               description: Ответ ассистента
+               content:
+                  text/event-stream:
+                     schema:
+                        type: string
+                        description:
+                           SSE поток токенов ответа ассистента
+                     examples:
+                        stream:
+                           summary: Пример SSE потока
+                           value: |
+                              data: Вопрос 1/5. Расскажите о вашем опыте со Spring
+
+                              data:  Boot и микросервисами?
+
+            "404":
+               description: Сессия не найдена
+            "410":
+               description: Сессия завершена
+            "500":
+               description: Ошибка сервера
+   /sessions/{sessionId}:
+      get:
+         summary: Получить состояние сессии и историю сообщений
+         parameters:
+            - name: sessionId
+              in: path
+              required: true
               schema:
-                type: string
-                description:
-                  SSE поток токенов ответа ассистента
-              examples:
-                stream:
-                  summary: Пример SSE потока
-                  value: |
-                    data: Вопрос 1/5. Расскажите о вашем опыте со Spring
-
-                    data:  Boot и микросервисами?
-
-        "404":
-          description: Сессия не найдена
-        "410":
-          description: Сессия завершена
-        "500":
-          description: Ошибка сервера
-  /sessions/{sessionId}:
-    get:
-      summary: Получить состояние сессии и историю сообщений
-      parameters:
-        - name: sessionId
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Состояние сессии
-          content:
-            application/json:
+                 type: string
+         responses:
+            "200":
+               description: Состояние сессии
+               content:
+                  application/json:
+                     schema:
+                        $ref: "#/components/schemas/Session"
+            "404":
+               description: Сессия не найдена
+   /sessions/{sessionId}/status:
+      get:
+         summary: Получить состояние сессии и историю сообщений
+         parameters:
+            - name: sessionId
+              in: path
+              required: true
               schema:
-                $ref: "#/components/schemas/Session"
-        "404":
-          description: Сессия не найдена
-  /sessions/{sessionId}/status:
-    get:
-      summary: Получить состояние сессии и историю сообщений
-      parameters:
-        - name: sessionId
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Состояние сессии
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/SessionStatusResponse"
-        "404":
-          description: Сессия не найдена
+                 type: string
+         responses:
+            "200":
+               description: Состояние сессии
+               content:
+                  application/json:
+                     schema:
+                        $ref: "#/components/schemas/SessionStatusResponse"
+            "404":
+               description: Сессия не найдена
 ```
----
-
-## Локальный запуск
-
-### Требования
-- Docker / Docker Desktop
-- Java 21
-
-### Быстрый старт
-1. Установите ключ доступа к LLM в переменную окружения:
-```bash
-export OPENAI_API_KEY=your_key_here
-```
-2. Запустите сервис (скрипт поднимет Postgres через Docker Compose, соберёт и запустит приложение):
-```bash
-chmod +x ./run.sh
-./run.sh
-```
-
-Приложение будет доступно на `http://localhost:8080`.
-Swagger UI: `http://localhost:8080/swagger-ui/index.html`.
-
-### Прокси для исходящих запросов в LLM
-Если доступ к LLM возможен только через прокси, передайте параметр `proxy` в формате `host:port`:
-```bash
-./run.sh --proxy=proxy.example.com:8080
-# или
-./run.sh proxy=proxy.example.com:8080
-```
-
-В этом случае исходящие запросы к LLM пойдут через указанный прокси. Если параметр не задан — прокси не используется.
-
-### Остановка Postgres
-Скрипт оставляет контейнер БД запущенным. Остановить его можно так:
-```bash
-docker compose stop postgres
-```
-
 ---
 
 ## Локальный запуск
@@ -355,8 +309,17 @@ chmod +x ./run.sh
 ./run.sh
 ```
 
-Приложение будет доступно на `http://localhost:8080`.
-Swagger UI: `http://localhost:8080/swagger-ui/index.html`.
+Приложение будет доступно на `http://localhost:10000`.
+Swagger UI: `http://localhost:10000/swagger-ui/index.html`.
+
+### Передача ключа OpenAI через флаг
+Вместо переменной окружения можно передать ключ через аргумент командной строки:
+```bash
+./run.sh --openai-key=sk-xxxx
+# или
+./run.sh openai-key=sk-xxxx
+```
+Скрипт экспортирует переменную `OPENAI_API_KEY` на время запуска приложения.
 
 ### Прокси для исходящих запросов в LLM
 Если доступ к LLM возможен только через прокси, передайте параметр `proxy` в формате `host:port`:
@@ -368,17 +331,66 @@ Swagger UI: `http://localhost:8080/swagger-ui/index.html`.
 
 В этом случае исходящие запросы к LLM пойдут через указанный прокси. Если параметр не задан — прокси не используется.
 
-### Передача ключа OpenAI через флаг
-Вместо переменной окружения можно передать ключ через аргумент командной строки:
-```bash
-./run.sh --openai-key=sk-xxxx
-# или
-./run.sh openai-key=sk-xxxx
+### Запуск через Docker Compose (без локальной Java)
+Можно запустить приложение и базу в контейнерах (сборка образа произойдёт автоматически):
+
+1) Укажите необходимые переменные окружения для сервиса в `docker-compose.yml` → `services.app.environment`:
+- `OPENAI_API_KEY` — обязательный ключ для доступа к LLM
+- `OPENAI_API_PROJECT_ID` — опционально, если требуется
+- `PROXY` — опционально, формат `host:port` для прокси исходящих запросов к LLM
+
+Пример фрагмента:
+```yaml
+services:
+  app:
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/ai_interviewer
+      DB_USERNAME: ai
+      DB_PASSWORD: ai
+      OPENAI_API_KEY: "sk-..."
+      OPENAI_API_PROJECT_ID: ""
+      #PROXY: "proxy.example.com:8080"
 ```
-Скрипт экспортирует переменную `OPENAI_API_KEY` на время запуска приложения.
+
+2) Запустите docker-compose:
+```bash
+docker compose up -d --build
+# или только приложение (база поднимется автоматически как зависимость):
+docker compose up -d --build app
+```
+
+3) Проверьте логи при необходимости:
+```bash
+docker compose logs -f app | cat
+```
+
+4) Остановить контейнеры:
+```bash
+docker compose down
+```
+
+После запуска приложение доступно на `http://localhost:10000` (порт проброшен в `docker-compose.yml`).
 
 ### Остановка Postgres
 Скрипт оставляет контейнер БД запущенным. Остановить его можно так:
 ```bash
 docker compose stop postgres
 ```
+
+---
+
+## Формат и команды интервью
+
+- Команды этапов:
+  - «План интервью»: стартовая команда. Ассистент приветствует и кратко описывает вакансию, цели и темы интервью. Далее ожидается ввод "Начать интервью".
+  - «Начать интервью»: ассистент переходит к первому вопросу.
+  - «Завершить интервью»: немедленное завершение. Ассистент выводит на первой строке фразу: `Интервью завершено`, затем даёт финальный фидбек.
+
+- Формат основного вопроса:
+  - `Вопрос X/N (Тема: <...>): …?`
+
+- Формат уточняющего вопроса:
+  - `Уточняющий вопрос (тема: <...>): …?`
+
+- Стиль общения:
+  - По умолчанию дружелюбный, на «ты». Можно задать через `communicationStyle` при создании сессии.
