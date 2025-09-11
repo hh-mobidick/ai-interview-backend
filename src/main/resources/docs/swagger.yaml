@@ -1,128 +1,248 @@
 openapi: 3.0.3
 info:
   title: AI Interview Backend API
-  version: "1.0"
+  version: "1.1"
 servers:
   - url: https://api.example.com/
     description: Базовый URL API
 components:
-  securitySchemes:
-    bearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
   schemas:
-    CreateSessionRequest:
+    ApiError:
       type: object
-      required:
-        - vacancyUrl
+      required: [code, message]
       properties:
+        code:
+          type: string
+          example: VACANCY_NOT_PARSABLE
+        message:
+          type: string
+          example: "Не удалось извлечь информацию о вакансии из ссылки"
+        details:
+          type: object
+          additionalProperties: true
+
+    CreateSessionMode:
+      type: string
+      enum: [vacancy, role]
+      example: vacancy
+
+    InterviewFormat:
+      type: string
+      enum: [training, realistic]
+      example: training
+
+    CommunicationStylePreset:
+      type: string
+      enum: [formal_vy, friendly_ty, neutral, supportive, strict]
+      example: friendly_ty
+
+    CreateSessionRequestJson:
+      type: object
+      required: [mode]
+      properties:
+        mode:
+          $ref: "#/components/schemas/CreateSessionMode"
+        # Варианты источника данных о вакансии — ОДИН из трёх (валидация на бэке):
         vacancyUrl:
           type: string
-          description: URL вакансии на hh.ru
-          example: "https://hh.ru/vacancy/123456"
+          description: Любая ссылка, содержащая описание вакансии (hh.ru, карьерные порталы, корпоративные страницы и т.п.)
+          example: "https://example.com/vacancy/123"
+        vacancyText:
+          type: string
+          description: Сырой текст описания вакансии (альтернатива ссылке или файлу)
+        # Для mode=role:
+        roleName:
+          type: string
+          description: Название роли при создании плана по роли (например, 'Backend Developer (Java)')
+          example: "Backend Developer (Java)"
+        # Общие доп. параметры:
         numQuestions:
           type: integer
-          description: Количество вопросов в интервью (по умолчанию 5)
-          example: 5
-        instructions:
+          minimum: 1
+          maximum: 50
+          description: Желаемое количество вопросов; если не задано — бэкенд подберёт автоматически
+          example: 7
+        planPreferences:
           type: string
-          description: Кастомные инструкции для составления интервью
-          example: "Фокусируйся на практических кейсах и примерах проектов."
-        communicationStyle:
+          description: Свободные пожелания к построению плана (темы, конкретные вопросы, уровень сложности и т.д.)
+          example: "Сделай упор на архитектуру, транзакции и оптимизацию SQL"
+        interviewFormat:
+          $ref: "#/components/schemas/InterviewFormat"
+        communicationStylePreset:
+          $ref: "#/components/schemas/CommunicationStylePreset"
+        communicationStyleFreeform:
           type: string
-          description: Особые пожелания о стиле общения
-          example: "Общение в дружелюбном, располагающем стиле на «ты»."
-    SessionStatusResponse:
+          description: Произвольные пожелания к стилю общения (если хочется точнее, чем пресет)
+          example: "Дружелюбный, но структурный, без панибратства"
+
+    # multipart-форма для загрузки файла вакансии
+    CreateSessionRequestMultipart:
+      type: object
+      required: [mode]
+      properties:
+        mode:
+          type: string
+          enum: [vacancy, role]
+        vacancyFile:
+          type: string
+          format: binary
+          description: Файл с описанием вакансии (.txt, .pdf, .docx)
+        vacancyUrl:
+          type: string
+          description: (опционально) если хотите приложить и ссылку
+        vacancyText:
+          type: string
+          description: (опционально) если хотите приложить и сырой текст
+        roleName:
+          type: string
+        numQuestions:
+          type: integer
+          minimum: 1
+          maximum: 50
+        planPreferences:
+          type: string
+        interviewFormat:
+          $ref: "#/components/schemas/InterviewFormat"
+        communicationStylePreset:
+          $ref: "#/components/schemas/CommunicationStylePreset"
+        communicationStyleFreeform:
+          type: string
+
+    SessionStatus:
+      type: string
+      enum: [planned, ongoing, completed]
+      example: "planned"
+
+    SessionMessageItem:
       type: object
       properties:
-        status:
-          $ref: "#/components/schemas/SessionStatus"
-    MessageRequest:
-      type: object
-      required:
-        - type
-      properties:
-        type:
+        role:
           type: string
-          enum: [ text, audio ]
-          description: Тип сообщения
-          example: text
-        message:
+          enum: [assistant, user]
+          example: assistant
+        content:
           type: string
-          description: Текст сообщения (обязательно для type=text)
-          example: "Начать интервью"
-        audioBase64:
+          description: Произвольный текст (вопросы, ответы, финальный фидбек и т.д.)
+        createdAt:
           type: string
-          description: Бинарные данные аудио в base64 (обязательно для type=audio)
-        audioMimeType:
-          type: string
-          description: MIME-тип аудио (например, audio/webm, audio/mpeg). Обязательно для type=audio
-    MessageResponse:
-      type: object
-      properties:
-        sessionId:
-          type: string
-          example: "f3c1b9be-6b2a-4d3c-9a51-5d2a1c4a1a45"
-        message:
-          type: string
-          description: Сообщение ассистента (вопрос или финальное сообщение с фидбеком)
-          example: "Вопрос 1/5. Расскажите о вашем опыте со Spring Boot..."
-        interviewComplete:
-          type: boolean
-          description: true — интервью завершено (текущее message содержит финальный фидбек)
-          example: false
+          format: date-time
+
     Session:
       type: object
       properties:
         sessionId:
           type: string
-        vacancyUrl:
-          type: string
-          example: "https://hh.ru/vacancy/123456"
         status:
           $ref: "#/components/schemas/SessionStatus"
+        mode:
+          $ref: "#/components/schemas/CreateSessionMode"
+        vacancyUrl:
+          type: string
+        roleName:
+          type: string
         numQuestions:
           type: integer
-          example: 5
+        interviewFormat:
+          $ref: "#/components/schemas/InterviewFormat"
+        communicationStylePreset:
+          $ref: "#/components/schemas/CommunicationStylePreset"
+        communicationStyleFreeform:
+          type: string
+        planPreferences:
+          type: string
+        instructions:
+          type: string
         startedAt:
           type: string
           format: date-time
         endedAt:
           type: string
           format: date-time
-        instructions:
-          type: string
-          description: Кастомные инструкции (если заданы при создании)
         messages:
           type: array
-          description: История диалога
           items:
-            type: object
-            properties:
-              role:
-                type: string
-                enum: [assistant, user]
-                example: "assistant"
-              content:
-                type: string
-                example: "Роль: ... План интервью: ... Если план подходит — нажмите 'Начать интервью'."
-    SessionStatus:
-      type: string
-      enum: [ planned, ongoing, completed ]
-      example: "planned"
+            $ref: "#/components/schemas/SessionMessageItem"
+
+    MessageRequest:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [text, audio]
+          example: text
+        message:
+          type: string
+          description: Текст сообщения (обязательно для type=text)
+        audioBase64:
+          type: string
+          description: WAV-аудио в base64 (обязательно для type=audio)
+      description: |
+        Для аудио принимается только WAV. Поле audioMimeType удалено.
+
+    MessageResponse:
+      type: object
+      properties:
+        sessionId:
+          type: string
+        message:
+          type: string
+          description: Ответ ассистента (вопрос/подсказка/финальный фидбек) — произвольный текст
+        interviewComplete:
+          type: boolean
+          description: true — интервью завершено
+
+    SessionStatusResponse:
+      type: object
+      properties:
+        status:
+          $ref: "#/components/schemas/SessionStatus"
+
+  responses:
+    BadRequest:
+      description: Некорректный запрос
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+    NotFound:
+      description: Не найдено
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+    Gone:
+      description: Сессия завершена
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+    Unauthorized:
+      description: Требуется авторизация
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+    ServerError:
+      description: Ошибка сервера
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+
 paths:
   /sessions:
     post:
-      summary: Создать новую сессию интервью
-      security:
-        - bearerAuth: []
+      summary: Создать новую сессию интервью (JSON-вариант)
+      description: |
+        Универсальный вход: можно указать ссылку на вакансию (любой URL), сырой текст, или режим по роли.
+        Если из предоставленной ссылки не удалось извлечь вакансию — возвращается 400 VACANCY_NOT_PARSABLE.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateSessionRequest"
+              $ref: "#/components/schemas/CreateSessionRequestJson"
       responses:
         "201":
           description: Сессия создана
@@ -131,14 +251,39 @@ paths:
               schema:
                 $ref: "#/components/schemas/Session"
         "400":
-          description: Некорректный запрос
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "500":
-          description: Ошибка сервера
+          $ref: "#/components/responses/ServerError"
+
+  /sessions/form:
+    post:
+      summary: Создать новую сессию интервью (multipart, с загрузкой файла)
+      description: Загрузка файла описания вакансии (.txt, .pdf, .docx) через multipart/form-data
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/CreateSessionRequestMultipart"
+      responses:
+        "201":
+          description: Сессия создана
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
   /sessions/{sessionId}/messages:
     post:
       summary: Отправить сообщение пользователя и получить ответ ассистента
-      security:
-        - bearerAuth: []
       parameters:
         - name: sessionId
           in: path
@@ -158,17 +303,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/MessageResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
-          description: Сессия не найдена
+          $ref: "#/components/responses/NotFound"
         "410":
-          description: Сессия завершена
+          $ref: "#/components/responses/Gone"
         "500":
-          description: Ошибка сервера
+          $ref: "#/components/responses/ServerError"
+
   /sessions/{sessionId}/messages/stream:
     post:
-      summary: Отправить сообщение пользователя и получить ответ ассистента в виде stream
-      security:
-        - bearerAuth: []
+      summary: Отправить сообщение и получить потоковый ответ (SSE)
       parameters:
         - name: sessionId
           in: path
@@ -183,32 +329,24 @@ paths:
               $ref: "#/components/schemas/MessageRequest"
       responses:
         "200":
-          description: Ответ ассистента
+          description: SSE поток токенов ответа ассистента
           content:
             text/event-stream:
               schema:
                 type: string
-                description:
-                  SSE поток токенов ответа ассистента
-              examples:
-                stream:
-                  summary: Пример SSE потока
-                  value: |
-                    data: Вопрос 1/5. Расскажите о вашем опыте со Spring
-
-                    data:  Boot и микросервисами?
-
+                description: "SSE поток (строки `data: ...`)"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
-          description: Сессия не найдена
+          $ref: "#/components/responses/NotFound"
         "410":
-          description: Сессия завершена
+          $ref: "#/components/responses/Gone"
         "500":
-          description: Ошибка сервера
+          $ref: "#/components/responses/ServerError"
+
   /sessions/{sessionId}:
     get:
       summary: Получить состояние сессии и историю сообщений
-      security:
-        - bearerAuth: []
       parameters:
         - name: sessionId
           in: path
@@ -222,13 +360,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Session"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
-          description: Сессия не найдена
+          $ref: "#/components/responses/NotFound"
+
   /sessions/{sessionId}/status:
     get:
-      summary: Получить состояние сессии и историю сообщений
-      security:
-        - bearerAuth: []
+      summary: Получить статус сессии
       parameters:
         - name: sessionId
           in: path
@@ -242,5 +381,32 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SessionStatusResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
-          description: Сессия не найдена
+          $ref: "#/components/responses/NotFound"
+
+  /roles/suggest:
+    get:
+      summary: Подсказки по ролям (автодополнение)
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+            example: "backend"
+      responses:
+        "200":
+          description: Список подсказок по ролям
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+                  example: "Backend Developer (Java)"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/ServerError"

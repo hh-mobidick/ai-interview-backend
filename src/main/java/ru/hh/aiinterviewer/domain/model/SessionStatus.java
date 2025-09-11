@@ -10,6 +10,7 @@ public enum SessionStatus {
 
   PLANNED("planned"),
   ONGOING("ongoing"),
+  FEEDBACK("feedback"),
   COMPLETED("completed");
 
   @Getter

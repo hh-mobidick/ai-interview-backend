@@ -37,6 +37,13 @@ public class Session {
   private String vacancyUrl;
 
   @Enumerated(EnumType.STRING)
+  @Column(name = "mode")
+  private SessionMode mode;
+
+  @Column(name = "role_name")
+  private String roleName;
+
+  @Enumerated(EnumType.STRING)
   @Column(name = "status")
   private SessionStatus status;
 
@@ -51,6 +58,19 @@ public class Session {
 
   @Column(name = "communication_style")
   private String communicationStyle;
+
+  @Enumerated(EnumType.STRING)
+  @Column(name = "interview_format")
+  private InterviewFormat interviewFormat;
+
+  @Column(name = "plan_preferences")
+  private String planPreferences;
+
+  @Column(name = "communication_style_preset")
+  private String communicationStylePreset;
+
+  @Column(name = "communication_style_freeform")
+  private String communicationStyleFreeform;
 
   @Column(name = "started_at")
   private OffsetDateTime startedAt;
