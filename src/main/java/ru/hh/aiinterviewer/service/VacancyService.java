@@ -35,6 +35,7 @@ public class VacancyService {
             .defaultHeader("Accept-Language", "ru_RU")
             .defaultHeader("User-Agent", "ai-interview-backend/0.0.1")
             .build();
+    private final RestClient genericClient = RestClient.create();
 
     public String getVacancy(String vacancyUrl) {
         return getVacancyByUrl(vacancyUrl);
@@ -47,28 +48,97 @@ public class VacancyService {
 
         vacancyUrl = vacancyUrl.trim();
 
+        // Try HH-specific path first
         String vacancyId = extractVacancyId(vacancyUrl);
-        if (vacancyId == null) {
-            throw new VacancyNotParsableException("Invalid vacancyUrl, cannot extract id: " + vacancyUrl);
+        if (vacancyId != null) {
+            try {
+                String response = restClient.get()
+                        .uri(URI.create(API_BASE_URL + "/vacancies/" + vacancyId))
+                        .retrieve()
+                        .body(String.class);
+
+                if (response == null) {
+                    throw new NotFoundException("Vacancy not found: id=" + vacancyId);
+                }
+
+                return filterVacancyJson(response);
+
+            } catch (HttpClientErrorException.NotFound e) {
+                throw new VacancyNotParsableException("Vacancy not found for url: " + vacancyUrl);
+            } catch (HttpClientErrorException e) {
+                log.error("HH API error: status={}, body={}", e.getStatusCode().value(), e.getResponseBodyAsString());
+                throw e;
+            }
+        }
+
+        // Generic URL handler (non-hh.ru): try to fetch and extract description/text
+        return parseGenericVacancyPage(vacancyUrl);
+    }
+
+    private String parseGenericVacancyPage(String url) {
+        if (!url.startsWith("http://") && !url.startsWith("https://")) {
+            throw new VacancyNotParsableException("Unsupported URL scheme: " + url);
         }
         try {
-            String response = restClient.get()
-                    .uri(URI.create(API_BASE_URL + "/vacancies/" + vacancyId))
-                    .retrieve()
-                    .body(String.class);
+            String html = genericClient.get()
+                .uri(URI.create(url))
+                .retrieve()
+                .body(String.class);
 
-            if (response == null) {
-                throw new NotFoundException("Vacancy not found: id=" + vacancyId);
+            if (html == null || html.isBlank()) {
+                throw new VacancyNotParsableException("Empty response from url: " + url);
             }
 
-            return filterVacancyJson(response);
-
-        } catch (HttpClientErrorException.NotFound e) {
-            throw new VacancyNotParsableException("Vacancy not found for url: " + vacancyUrl);
+            String meta = extractMetaDescription(html);
+            String text = meta != null ? meta : extractPlainText(html);
+            if (text == null || text.isBlank()) {
+                throw new VacancyNotParsableException("Cannot extract vacancy description from url: " + url);
+            }
+            return text;
         } catch (HttpClientErrorException e) {
-            log.error("HH API error: status={}, body={}", e.getStatusCode().value(), e.getResponseBodyAsString());
-            throw e;
+            if (e instanceof HttpClientErrorException.NotFound) {
+                throw new VacancyNotParsableException("Vacancy not found for url: " + url);
+            }
+            log.warn("Generic URL fetch failed: status={}, url={}", e.getStatusCode().value(), url);
+            throw new VacancyNotParsableException("Failed to fetch vacancy from url: " + url);
+        } catch (Exception e) {
+            log.warn("Generic URL parse error for url {}", url, e);
+            throw new VacancyNotParsableException("Failed to parse vacancy from url: " + url);
         }
+    }
+
+    private String extractMetaDescription(String html) {
+        // Try common meta tags: description or og:description
+        Pattern metaDesc = Pattern.compile("(?is)<meta\\s+name=\\\"description\\\"\\s+content=\\\"(.*?)\\\"\\s*/?>");
+        Matcher m1 = metaDesc.matcher(html);
+        if (m1.find()) {
+            return sanitizeText(m1.group(1));
+        }
+        Pattern ogDesc = Pattern.compile("(?is)<meta\\s+property=\\\"og:description\\\"\\s+content=\\\"(.*?)\\\"\\s*/?>");
+        Matcher m2 = ogDesc.matcher(html);
+        if (m2.find()) {
+            return sanitizeText(m2.group(1));
+        }
+        return null;
+    }
+
+    private String extractPlainText(String html) {
+        String withoutScripts = html.replaceAll("(?is)<script.*?>.*?</script>", " ")
+            .replaceAll("(?is)<style.*?>.*?</style>", " ");
+        String text = withoutScripts.replaceAll("(?is)<[^>]+>", " ");
+        text = sanitizeText(text);
+        // Keep a reasonable length
+        if (text.length() > 4000) {
+            text = text.substring(0, 4000);
+        }
+        return text;
+    }
+
+    private String sanitizeText(String s) {
+        if (s == null) {
+            return null;
+        }
+        return s.replaceAll("\\s+", " ").trim();
     }
 
     public String extractTextFromFile(MultipartFile file) {
@@ -91,11 +161,40 @@ public class VacancyService {
                 throw new IllegalArgumentException("Failed to read text file");
             }
         }
-        // For now, we don't support pdf/docx parsing without extra libs
         if (lower.endsWith(".pdf") || lower.endsWith(".docx")) {
-            throw new FileTypeNotSupportedException("Only .txt is supported at the moment");
+            return parseWithTika(file);
         }
         throw new FileTypeNotSupportedException("Unsupported file type");
+    }
+
+    private String parseWithTika(MultipartFile file) {
+        try {
+            ClassLoader cl = Thread.currentThread().getContextClassLoader();
+            Class<?> handlerCls = Class.forName("org.apache.tika.sax.BodyContentHandler", true, cl);
+            Class<?> metadataCls = Class.forName("org.apache.tika.metadata.Metadata", true, cl);
+            Class<?> contextCls = Class.forName("org.apache.tika.parser.ParseContext", true, cl);
+            Class<?> parserCls = Class.forName("org.apache.tika.parser.AutoDetectParser", true, cl);
+
+            Object handler = handlerCls.getConstructor(int.class).newInstance(-1);
+            Object metadata = metadataCls.getConstructor().newInstance();
+            Object context = contextCls.getConstructor().newInstance();
+            Object parser = parserCls.getConstructor().newInstance();
+
+            parserCls.getMethod("parse", java.io.InputStream.class, Class.forName("org.xml.sax.ContentHandler", true, cl), metadataCls, contextCls)
+                .invoke(parser, file.getInputStream(), handler, metadata, context);
+
+            String text = sanitizeText((String) handlerCls.getMethod("toString").invoke(handler));
+            if (text == null || text.isBlank()) {
+                throw new VacancyNotParsableException("Empty content in file");
+            }
+            if (text.length() > 10000) {
+                text = text.substring(0, 10000);
+            }
+            return text;
+        } catch (Exception e) {
+            log.warn("Tika parse failed for file {}", file.getOriginalFilename(), e);
+            throw new VacancyNotParsableException("Failed to parse file content");
+        }
     }
 
     private String filterVacancyJson(String rawJson) {
