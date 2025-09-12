@@ -199,7 +199,7 @@ public class InterviewService {
       } else {
         String correctedPlan = prepareInterviewPlanChatClient
             .prompt()
-            .user(Prompts.getPrepareInterviewPlanPrompt(userTextMessage, session.getNumQuestions(), session.getPlanPreferences()))
+            .system(Prompts.getRevisePlanPrompt(session.getInterviewPlan(), userTextMessage, session.getNumQuestions(), session.getPlanPreferences()))
             .call()
             .content();
         session.setInterviewPlan(correctedPlan);
