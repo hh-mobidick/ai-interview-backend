@@ -105,7 +105,7 @@ public class InterviewService {
 
     String userTextMessage = switch (MessageType.fromValue(userMessage.getType())) {
       case TEXT -> userMessage.getMessage();
-      case AUDIO -> transcriptionService.transcribe(userMessage.getAudioBase64(), null);
+      case AUDIO -> transcriptionService.transcribe(userMessage.getAudioBase64());
     };
 
     if (MessageTrigger.START.isTrigger(userTextMessage)) {
@@ -139,7 +139,7 @@ public class InterviewService {
 
     String userTextMessage = switch (MessageType.fromValue(userMessage.getType())) {
       case TEXT -> userMessage.getMessage();
-      case AUDIO -> transcriptionService.transcribe(userMessage.getAudioBase64(), null);
+      case AUDIO -> transcriptionService.transcribe(userMessage.getAudioBase64());
     };
 
     if (MessageTrigger.START.isTrigger(userTextMessage)) {
