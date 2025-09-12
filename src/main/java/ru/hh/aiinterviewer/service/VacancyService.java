@@ -8,12 +8,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
+import ru.hh.aiinterviewer.config.ApplicationProperties;
 import ru.hh.aiinterviewer.exception.NotFoundException;
 import ru.hh.aiinterviewer.exception.FileTooLargeException;
 import ru.hh.aiinterviewer.exception.FileTypeNotSupportedException;
@@ -22,6 +24,7 @@ import ru.hh.aiinterviewer.service.dto.VacancyInfo;
 import ru.hh.aiinterviewer.utils.JsonUtils;
 
 @Service
+@RequiredArgsConstructor
 public class VacancyService {
 
     private static final Logger log = LoggerFactory.getLogger(VacancyService.class);
@@ -36,6 +39,7 @@ public class VacancyService {
             .defaultHeader("User-Agent", "ai-interview-backend/0.0.1")
             .build();
     private final RestClient genericClient = RestClient.create();
+    private final ApplicationProperties applicationProperties;
 
     public String getVacancy(String vacancyUrl) {
         return getVacancyByUrl(vacancyUrl);
@@ -145,8 +149,7 @@ public class VacancyService {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("vacancyFile must not be empty");
         }
-        // Simple size check (default 5MB). Configurable in future.
-        long maxSizeBytes = 5L * 1024 * 1024;
+        long maxSizeBytes = applicationProperties.getMaxFileSizeBytes();
         if (file.getSize() > maxSizeBytes) {
             throw new FileTooLargeException("File too large, max is 5MB");
         }

@@ -11,17 +11,16 @@ import org.springframework.core.io.Resource;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import ru.hh.aiinterviewer.config.ApplicationProperties;
 
 @Service
 @RequiredArgsConstructor
 public class TranscriptionService {
 
   private static final String MODEL = "gpt-4o-mini-transcribe";
-  private static final long MAX_WAV_SIZE_BYTES = 25L * 1024 * 1024; // 25MB safety limit
-  private static final int MIN_SAMPLE_RATE = 8000;
-  private static final int MAX_SAMPLE_RATE = 48000;
 
   private final OpenAiAudioTranscriptionModel audioTranscriptionModel;
+  private final ApplicationProperties applicationProperties;
 
   public String transcribe(String audioBase64) {
     if (audioBase64 == null || audioBase64.isBlank()) {
@@ -52,7 +51,7 @@ public class TranscriptionService {
     if (bytes.length < 44) {
       throw new ru.hh.aiinterviewer.exception.UnsupportedAudioFormatException("WAV too small or invalid");
     }
-    if (bytes.length > MAX_WAV_SIZE_BYTES) {
+    if (bytes.length > applicationProperties.getMaxAudioSizeBytes()) {
       throw new ru.hh.aiinterviewer.exception.FileTooLargeException("Audio file too large");
     }
     // Check RIFF header and WAVE
@@ -89,7 +88,7 @@ public class TranscriptionService {
           if (channels < 1 || channels > 2) {
             throw new ru.hh.aiinterviewer.exception.UnsupportedAudioFormatException("Unsupported channel count");
           }
-          if (sampleRate < MIN_SAMPLE_RATE || sampleRate > MAX_SAMPLE_RATE) {
+          if (sampleRate < applicationProperties.getMinAudioSampleRate() || sampleRate > applicationProperties.getMaxAudioSampleRate()) {
             throw new ru.hh.aiinterviewer.exception.UnsupportedAudioFormatException("Unsupported sample rate");
           }
           if (bitsPerSample != -1 && bitsPerSample % 8 != 0) {

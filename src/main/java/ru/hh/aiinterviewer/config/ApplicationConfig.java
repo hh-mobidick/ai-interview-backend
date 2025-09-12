@@ -6,12 +6,14 @@ import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
 import org.springframework.ai.chat.client.advisor.api.Advisor;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import ru.hh.aiinterviewer.domain.repository.SessionRepository;
 import ru.hh.aiinterviewer.llm.SessionChatMemory;
 
 @Configuration
+@EnableConfigurationProperties({ApplicationProperties.class, AuthProperties.class})
 public class ApplicationConfig {
 
   @Autowired

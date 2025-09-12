@@ -43,3 +43,9 @@ server:
 
 auth:
   token: ${AUTH_TOKEN:}
+
+app:
+  max-file-size-bytes: ${MAX_FILE_SIZE_BYTES:5242880}      # 5 MB
+  max-audio-size-bytes: ${MAX_AUDIO_SIZE_BYTES:26214400}  # 25 MB
+  min-audio-sample-rate: ${MIN_AUDIO_SAMPLE_RATE:8000}
+  max-audio-sample-rate: ${MAX_AUDIO_SAMPLE_RATE:48000}
