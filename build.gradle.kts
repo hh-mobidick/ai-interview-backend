@@ -44,6 +44,9 @@ dependencies {
 	implementation("org.apache.tika:tika-core:2.9.2")
 	implementation("org.apache.tika:tika-parsers-standard-package:2.9.2")
 
+	// Apache Commons Text for Jaro-Winkler similarity
+	implementation("org.apache.commons:commons-text:1.12.0")
+
 	runtimeOnly("org.postgresql:postgresql")
 
 	testImplementation("org.springframework.boot:spring-boot-starter-test")
