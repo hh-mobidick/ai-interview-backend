@@ -123,7 +123,7 @@ public class InterviewService {
         // Plan correction mode: keep PLANNED, regenerate plan
         String correctedPlan = prepareInterviewPlanChatClient
             .prompt()
-            .user(Prompts.getPrepareInterviewPlanPrompt(userTextMessage, session.getNumQuestions(), session.getPlanPreferences()))
+            .system(Prompts.getRevisePlanPrompt(session.getInterviewPlan(), userTextMessage, session.getNumQuestions(), session.getPlanPreferences()))
             .call()
             .content();
         session.setInterviewPlan(correctedPlan);
@@ -134,7 +134,12 @@ public class InterviewService {
     } else if (session.getStatus() == SessionStatus.ONGOING) {
       if (MessageTrigger.FEEDBACK.isTrigger(userTextMessage)) {
         session.setStatus(SessionStatus.FEEDBACK);
-        assistantAnswer = performChatInteraction(session, userTextMessage);
+        assistantAnswer = interviewerChatClient.prompt()
+            .system(Prompts.getFeedbackPrompt(session.getInterviewPlan(), session.getCommunicationStylePreset()))
+            .user(userTextMessage)
+            .advisors(advisorSpec -> advisorSpec.param(ChatMemory.CONVERSATION_ID, session.getId().toString()))
+            .call()
+            .content();
         sessionRepository.save(session);
         return buildNextMessageResponse(session, assistantAnswer);
       }
@@ -224,7 +229,11 @@ public class InterviewService {
 
   private String performChatInteraction(Session session, String userMessage) {
     return interviewerChatClient.prompt()
-        .system(Prompts.getInterviewerPrompt(session.getInterviewPlan(), session.getCommunicationStylePreset()))
+        .system(Prompts.getInterviewerPrompt(
+            session.getInterviewPlan(),
+            session.getCommunicationStylePreset(),
+            session.getInterviewFormat() == null ? null : session.getInterviewFormat().getValue()
+        ))
         .user(userMessage)
         .advisors(advisorSpec -> advisorSpec.param(ChatMemory.CONVERSATION_ID, session.getId().toString()))
         .call()
@@ -236,7 +245,11 @@ public class InterviewService {
     SseEmitter sseEmitter = new SseEmitter(0L);
 
     interviewerChatClient.prompt()
-        .system(Prompts.getInterviewerPrompt(session.getInterviewPlan(), session.getCommunicationStylePreset()))
+        .system(Prompts.getInterviewerPrompt(
+            session.getInterviewPlan(),
+            session.getCommunicationStylePreset(),
+            session.getInterviewFormat() == null ? null : session.getInterviewFormat().getValue()
+        ))
         .user(userMessage)
         .advisors(advisorSpec -> advisorSpec.param(ChatMemory.CONVERSATION_ID, session.getId().toString()))
         .stream()

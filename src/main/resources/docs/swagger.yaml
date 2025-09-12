@@ -28,8 +28,9 @@ components:
 
     InterviewFormat:
       type: string
-      enum: [training, realistic]
-      example: training
+      description: Формат интервью. По умолчанию используется 'moderate' при отсутствии значения.
+      enum: [training, moderate, realistic]
+      example: moderate
 
     CommunicationStylePreset:
       type: string

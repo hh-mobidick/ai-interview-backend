@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 public enum InterviewFormat {
 
   TRAINING("training"),
+  MODERATE("moderate"),
   REALISTIC("realistic");
 
   @Getter
