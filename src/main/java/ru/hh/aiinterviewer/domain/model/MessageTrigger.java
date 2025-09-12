@@ -11,6 +11,8 @@ public enum MessageTrigger {
 
   PLAN("План интервью"),
   START("Начать интервью"),
+  FEEDBACK("Обратная связь"),
+  FINISH("Завершить интервью"),
   COMPLETE("Интервью завершено");
 
   private final String value;

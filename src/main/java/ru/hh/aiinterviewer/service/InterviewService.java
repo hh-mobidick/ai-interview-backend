@@ -20,6 +20,8 @@ import ru.hh.aiinterviewer.domain.model.SessionMode;
 import ru.hh.aiinterviewer.domain.model.SessionStatus;
 import ru.hh.aiinterviewer.domain.repository.SessionRepository;
 import ru.hh.aiinterviewer.exception.NotFoundException;
+import ru.hh.aiinterviewer.exception.InvalidStatusTransitionException;
+import ru.hh.aiinterviewer.exception.SessionCompletedException;
 import ru.hh.aiinterviewer.exception.VacancyNotParsableException;
 import ru.hh.aiinterviewer.llm.Prompts;
 
@@ -92,7 +94,9 @@ public class InterviewService {
     Session session = sessionRepository.findById(sessionId)
         .orElseThrow(() -> new NotFoundException("Session not found: " + sessionId));
 
-    session.ensureNotCompleted();
+    if (session.isCompleted()) {
+      throw new SessionCompletedException("Session is already completed");
+    }
 
     String assistantAnswer;
 
@@ -108,16 +112,56 @@ public class InterviewService {
       case AUDIO -> transcriptionService.transcribe(userMessage.getAudioBase64());
     };
 
-    if (MessageTrigger.START.isTrigger(userTextMessage)) {
-      session.startInterview();
-    }
-
-    assistantAnswer = performChatInteraction(session, userTextMessage);
-
-    if (MessageTrigger.COMPLETE.isTrigger(assistantAnswer)) {
-      session.completeInterview();
-      sessionRepository.save(session);
-      return buildFeedbackMessageResponse(session, assistantAnswer);
+    // State machine
+    if (session.getStatus() == SessionStatus.PLANNED) {
+      if (MessageTrigger.START.isTrigger(userTextMessage)) {
+        session.startInterview();
+        assistantAnswer = performChatInteraction(session, userTextMessage);
+        sessionRepository.save(session);
+        return buildNextMessageResponse(session, assistantAnswer);
+      } else {
+        // Plan correction mode: keep PLANNED, regenerate plan
+        String correctedPlan = prepareInterviewPlanChatClient
+            .prompt()
+            .user(Prompts.getPrepareInterviewPlanPrompt(userTextMessage, session.getNumQuestions(), session.getPlanPreferences()))
+            .call()
+            .content();
+        session.setInterviewPlan(correctedPlan);
+        assistantAnswer = correctedPlan;
+        sessionRepository.save(session);
+        return buildNextMessageResponse(session, assistantAnswer);
+      }
+    } else if (session.getStatus() == SessionStatus.ONGOING) {
+      if (MessageTrigger.FEEDBACK.isTrigger(userTextMessage)) {
+        session.setStatus(SessionStatus.FEEDBACK);
+        assistantAnswer = performChatInteraction(session, userTextMessage);
+        sessionRepository.save(session);
+        return buildNextMessageResponse(session, assistantAnswer);
+      }
+      if (MessageTrigger.FINISH.isTrigger(userTextMessage)) {
+        session.completeInterview();
+        assistantAnswer = performChatInteraction(session, MessageTrigger.COMPLETE.getValue());
+        sessionRepository.save(session);
+        return buildFeedbackMessageResponse(session, assistantAnswer);
+      }
+      assistantAnswer = performChatInteraction(session, userTextMessage);
+      if (MessageTrigger.COMPLETE.isTrigger(assistantAnswer)) {
+        session.completeInterview();
+        sessionRepository.save(session);
+        return buildFeedbackMessageResponse(session, assistantAnswer);
+      }
+    } else if (session.getStatus() == SessionStatus.FEEDBACK) {
+      if (MessageTrigger.FINISH.isTrigger(userTextMessage)) {
+        session.completeInterview();
+        assistantAnswer = performChatInteraction(session, MessageTrigger.COMPLETE.getValue());
+        sessionRepository.save(session);
+        return buildFeedbackMessageResponse(session, assistantAnswer);
+      }
+      assistantAnswer = performChatInteraction(session, userTextMessage);
+    } else if (session.getStatus() == SessionStatus.COMPLETED) {
+      throw new SessionCompletedException("Session is already completed");
+    } else {
+      throw new InvalidStatusTransitionException("Unsupported session status: " + session.getStatus());
     }
 
     sessionRepository.save(session);
@@ -129,7 +173,9 @@ public class InterviewService {
     Session session = sessionRepository.findById(sessionId)
         .orElseThrow(() -> new NotFoundException("Session not found: " + sessionId));
 
-    session.ensureNotCompleted();
+    if (session.isCompleted()) {
+      throw new SessionCompletedException("Session is already completed");
+    }
 
     if (session.getMessages().size() >= MAX_ITERATIONS) {
       session.completeInterview();
@@ -142,13 +188,38 @@ public class InterviewService {
       case AUDIO -> transcriptionService.transcribe(userMessage.getAudioBase64());
     };
 
-    if (MessageTrigger.START.isTrigger(userTextMessage)) {
-      session.startInterview();
+    if (session.getStatus() == SessionStatus.PLANNED) {
+      if (MessageTrigger.START.isTrigger(userTextMessage)) {
+        session.startInterview();
+      } else {
+        String correctedPlan = prepareInterviewPlanChatClient
+            .prompt()
+            .user(Prompts.getPrepareInterviewPlanPrompt(userTextMessage, session.getNumQuestions(), session.getPlanPreferences()))
+            .call()
+            .content();
+        session.setInterviewPlan(correctedPlan);
+      }
+      sessionRepository.save(session);
+      return performChatInteractionStreaming(session, userTextMessage);
+    } else if (session.getStatus() == SessionStatus.ONGOING) {
+      if (MessageTrigger.FEEDBACK.isTrigger(userTextMessage)) {
+        session.setStatus(SessionStatus.FEEDBACK);
+      } else if (MessageTrigger.FINISH.isTrigger(userTextMessage)) {
+        session.completeInterview();
+      }
+      sessionRepository.save(session);
+      return performChatInteractionStreaming(session, userTextMessage);
+    } else if (session.getStatus() == SessionStatus.FEEDBACK) {
+      if (MessageTrigger.FINISH.isTrigger(userTextMessage)) {
+        session.completeInterview();
+      }
+      sessionRepository.save(session);
+      return performChatInteractionStreaming(session, userTextMessage);
+    } else if (session.getStatus() == SessionStatus.COMPLETED) {
+      throw new SessionCompletedException("Session is already completed");
+    } else {
+      throw new InvalidStatusTransitionException("Unsupported session status: " + session.getStatus());
     }
-
-    sessionRepository.save(session);
-
-    return performChatInteractionStreaming(session, userTextMessage);
   }
 
   private String performChatInteraction(Session session, String userMessage) {
