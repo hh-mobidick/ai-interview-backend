@@ -24,6 +24,7 @@ import ru.hh.aiinterviewer.domain.model.InterviewFormat;
 import ru.hh.aiinterviewer.domain.model.SessionMode;
 import ru.hh.aiinterviewer.service.InterviewQueryService;
 import ru.hh.aiinterviewer.service.InterviewService;
+import ru.hh.aiinterviewer.service.VacancyService;
 
 @RestController
 @RequestMapping("/sessions")
@@ -32,6 +33,7 @@ public class SessionController {
 
   private final InterviewService interviewService;
   private final InterviewQueryService interviewQueryService;
+  private final VacancyService vacancyService;
 
   @PostMapping
   public ResponseEntity<SessionResponseDto> create(@Valid @RequestBody CreateSessionRequestDto request) {
@@ -53,7 +55,7 @@ public class SessionController {
       @RequestPart(value = "communicationStylePreset", required = false) String communicationStylePreset,
       @RequestPart(value = "communicationStyleFreeform", required = false) String communicationStyleFreeform
   ) {
-    CreateSessionRequestDto request = CreateSessionRequestDto.builder()
+    CreateSessionRequestDto.CreateSessionRequestDtoBuilder builder = CreateSessionRequestDto.builder()
         .mode(SessionMode.fromValue(mode))
         .vacancyUrl(vacancyUrl)
         .vacancyText(vacancyText)
@@ -62,8 +64,15 @@ public class SessionController {
         .planPreferences(planPreferences)
         .interviewFormat(interviewFormat == null ? null : InterviewFormat.fromValue(interviewFormat))
         .communicationStylePreset(communicationStylePreset)
-        .communicationStyleFreeform(communicationStyleFreeform)
-        .build();
+        .communicationStyleFreeform(communicationStyleFreeform);
+
+    // If file is provided, extract text and override vacancyText
+    if (vacancyFile != null && !vacancyFile.isEmpty()) {
+      String extracted = vacancyService.extractTextFromFile(vacancyFile);
+      builder.vacancyText(extracted);
+    }
+
+    CreateSessionRequestDto request = builder.build();
 
     UUID sessionId = interviewService.createSession(request);
     SessionResponseDto response = interviewQueryService.getHistory(sessionId);

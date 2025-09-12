@@ -3,6 +3,7 @@ package ru.hh.aiinterviewer.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
@@ -10,9 +11,13 @@ import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 import ru.hh.aiinterviewer.exception.NotFoundException;
+import ru.hh.aiinterviewer.exception.FileTooLargeException;
+import ru.hh.aiinterviewer.exception.FileTypeNotSupportedException;
+import ru.hh.aiinterviewer.exception.VacancyNotParsableException;
 import ru.hh.aiinterviewer.service.dto.VacancyInfo;
 import ru.hh.aiinterviewer.utils.JsonUtils;
 
@@ -32,6 +37,10 @@ public class VacancyService {
             .build();
 
     public String getVacancy(String vacancyUrl) {
+        return getVacancyByUrl(vacancyUrl);
+    }
+
+    public String getVacancyByUrl(String vacancyUrl) {
         if (vacancyUrl == null || vacancyUrl.isBlank()) {
             throw new IllegalArgumentException("vacancyUrl must be provided");
         }
@@ -40,7 +49,7 @@ public class VacancyService {
 
         String vacancyId = extractVacancyId(vacancyUrl);
         if (vacancyId == null) {
-            throw new IllegalArgumentException("Invalid vacancyUrl, cannot extract id: " + vacancyUrl);
+            throw new VacancyNotParsableException("Invalid vacancyUrl, cannot extract id: " + vacancyUrl);
         }
         try {
             String response = restClient.get()
@@ -55,11 +64,38 @@ public class VacancyService {
             return filterVacancyJson(response);
 
         } catch (HttpClientErrorException.NotFound e) {
-            throw new NotFoundException("Vacancy not found: id=" + vacancyId);
+            throw new VacancyNotParsableException("Vacancy not found for url: " + vacancyUrl);
         } catch (HttpClientErrorException e) {
             log.error("HH API error: status={}, body={}", e.getStatusCode().value(), e.getResponseBodyAsString());
             throw e;
         }
+    }
+
+    public String extractTextFromFile(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("vacancyFile must not be empty");
+        }
+        // Simple size check (default 5MB). Configurable in future.
+        long maxSizeBytes = 5L * 1024 * 1024;
+        if (file.getSize() > maxSizeBytes) {
+            throw new FileTooLargeException("File too large, max is 5MB");
+        }
+
+        String filename = file.getOriginalFilename();
+        String lower = filename == null ? "" : filename.toLowerCase();
+        if (lower.endsWith(".txt")) {
+            try {
+                byte[] bytes = file.getBytes();
+                return new String(bytes, StandardCharsets.UTF_8);
+            } catch (Exception e) {
+                throw new IllegalArgumentException("Failed to read text file");
+            }
+        }
+        // For now, we don't support pdf/docx parsing without extra libs
+        if (lower.endsWith(".pdf") || lower.endsWith(".docx")) {
+            throw new FileTypeNotSupportedException("Only .txt is supported at the moment");
+        }
+        throw new FileTypeNotSupportedException("Unsupported file type");
     }
 
     private String filterVacancyJson(String rawJson) {

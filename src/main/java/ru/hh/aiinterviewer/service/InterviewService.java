@@ -1,7 +1,6 @@
 package ru.hh.aiinterviewer.service;
 
 import java.util.UUID;
-import java.util.Objects;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import org.springframework.ai.chat.client.ChatClient;
@@ -10,15 +9,18 @@ import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import org.springframework.web.multipart.MultipartFile;
 import ru.hh.aiinterviewer.api.dto.CreateSessionRequestDto;
 import ru.hh.aiinterviewer.api.dto.MessageRequestDto;
 import ru.hh.aiinterviewer.api.dto.MessageResponseDto;
 import ru.hh.aiinterviewer.domain.model.MessageTrigger;
 import ru.hh.aiinterviewer.domain.model.MessageType;
 import ru.hh.aiinterviewer.domain.model.Session;
+import ru.hh.aiinterviewer.domain.model.SessionMode;
 import ru.hh.aiinterviewer.domain.model.SessionStatus;
 import ru.hh.aiinterviewer.domain.repository.SessionRepository;
 import ru.hh.aiinterviewer.exception.NotFoundException;
+import ru.hh.aiinterviewer.exception.VacancyNotParsableException;
 import ru.hh.aiinterviewer.llm.Prompts;
 
 @Service
@@ -34,9 +36,28 @@ public class InterviewService {
   private final ChatClient prepareInterviewPlanChatClient;
   private final TranscriptionService transcriptionService;
 
+  public String extractVacancyTextFromFile(MultipartFile file) {
+    return vacancyService.extractTextFromFile(file);
+  }
+
   @Transactional
   public UUID createSession(CreateSessionRequestDto request) {
-    String vacancy = vacancyService.getVacancy(request.getVacancyUrl());
+    String vacancy;
+    if (request.getMode() == SessionMode.ROLE) {
+      if (request.getRoleName() == null || request.getRoleName().isBlank()) {
+        throw new IllegalArgumentException("roleName must be provided when mode=role");
+      }
+      vacancy = request.getRoleName();
+    } else {
+      // mode=vacancy: one of vacancyUrl or vacancyText should be provided
+      if (request.getVacancyText() != null && !request.getVacancyText().isBlank()) {
+        vacancy = request.getVacancyText();
+      } else if (request.getVacancyUrl() != null && !request.getVacancyUrl().isBlank()) {
+        vacancy = vacancyService.getVacancyByUrl(request.getVacancyUrl());
+      } else {
+        throw new VacancyNotParsableException("One of vacancyUrl or vacancyText must be provided");
+      }
+    }
 
     String interviewPlan = prepareInterviewPlanChatClient
         .prompt()
