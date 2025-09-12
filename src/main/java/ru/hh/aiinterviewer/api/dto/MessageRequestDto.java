@@ -14,7 +14,6 @@ public class MessageRequestDto {
   // Text message content (required when type=text)
   private String message;
 
-  // Audio payload (base64-encoded) and mime type (required when type=audio)
+  // Audio payload (base64-encoded) (required when type=audio). Only WAV supported.
   private String audioBase64;
-  private String audioMimeType;
 }

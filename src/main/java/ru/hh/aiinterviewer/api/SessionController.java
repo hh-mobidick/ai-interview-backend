@@ -10,14 +10,18 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import ru.hh.aiinterviewer.api.dto.CreateSessionRequestDto;
 import ru.hh.aiinterviewer.api.dto.MessageRequestDto;
 import ru.hh.aiinterviewer.api.dto.MessageResponseDto;
 import ru.hh.aiinterviewer.api.dto.SessionResponseDto;
 import ru.hh.aiinterviewer.api.dto.SessionStatusResponseDto;
+import ru.hh.aiinterviewer.domain.model.InterviewFormat;
+import ru.hh.aiinterviewer.domain.model.SessionMode;
 import ru.hh.aiinterviewer.service.InterviewQueryService;
 import ru.hh.aiinterviewer.service.InterviewService;
 
@@ -31,6 +35,36 @@ public class SessionController {
 
   @PostMapping
   public ResponseEntity<SessionResponseDto> create(@Valid @RequestBody CreateSessionRequestDto request) {
+    UUID sessionId = interviewService.createSession(request);
+    SessionResponseDto response = interviewQueryService.getHistory(sessionId);
+    return ResponseEntity.status(HttpStatus.CREATED).body(response);
+  }
+
+  @PostMapping(value = "/form", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+  public ResponseEntity<SessionResponseDto> createForm(
+      @RequestPart("mode") String mode,
+      @RequestPart(value = "vacancyFile", required = false) MultipartFile vacancyFile,
+      @RequestPart(value = "vacancyUrl", required = false) String vacancyUrl,
+      @RequestPart(value = "vacancyText", required = false) String vacancyText,
+      @RequestPart(value = "roleName", required = false) String roleName,
+      @RequestPart(value = "numQuestions", required = false) Integer numQuestions,
+      @RequestPart(value = "planPreferences", required = false) String planPreferences,
+      @RequestPart(value = "interviewFormat", required = false) String interviewFormat,
+      @RequestPart(value = "communicationStylePreset", required = false) String communicationStylePreset,
+      @RequestPart(value = "communicationStyleFreeform", required = false) String communicationStyleFreeform
+  ) {
+    CreateSessionRequestDto request = CreateSessionRequestDto.builder()
+        .mode(SessionMode.fromValue(mode))
+        .vacancyUrl(vacancyUrl)
+        .vacancyText(vacancyText)
+        .roleName(roleName)
+        .numQuestions(numQuestions)
+        .planPreferences(planPreferences)
+        .interviewFormat(interviewFormat == null ? null : InterviewFormat.fromValue(interviewFormat))
+        .communicationStylePreset(communicationStylePreset)
+        .communicationStyleFreeform(communicationStyleFreeform)
+        .build();
+
     UUID sessionId = interviewService.createSession(request);
     SessionResponseDto response = interviewQueryService.getHistory(sessionId);
     return ResponseEntity.status(HttpStatus.CREATED).body(response);

@@ -11,8 +11,6 @@ import org.springframework.core.io.Resource;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
-import java.util.HashMap;
-import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -26,12 +24,10 @@ public class TranscriptionService {
     if (audioBase64 == null || audioBase64.isBlank()) {
       throw new IllegalArgumentException("audioBase64 must not be blank");
     }
-    if (audioMimeType == null || audioMimeType.isBlank()) {
-      throw new IllegalArgumentException("audioMimeType must not be blank");
-    }
+    // audioMimeType is deprecated; only WAV is supported now
 
     byte[] audioBytes = Base64.getDecoder().decode(audioBase64.getBytes(StandardCharsets.UTF_8));
-    String filename = "audio." + mapMimeToExtension(audioMimeType);
+    String filename = "audio.wav";
     Resource resource = new NamedByteArrayResource(audioBytes, filename);
 
     OpenAiAudioTranscriptionOptions options = OpenAiAudioTranscriptionOptions.builder()
@@ -49,19 +45,7 @@ public class TranscriptionService {
     return text;
   }
 
-  private String mapMimeToExtension(String mime) {
-    Map<String, String> map = new HashMap<>();
-    map.put("audio/mpeg", "mp3");
-    map.put("audio/mp3", "mp3");
-    map.put("audio/wav", "wav");
-    map.put("audio/x-wav", "wav");
-    map.put("audio/webm", "webm");
-    map.put("audio/ogg", "ogg");
-    map.put("audio/flac", "flac");
-    map.put("audio/mp4", "mp4");
-    map.put("audio/aac", "aac");
-    return map.getOrDefault(mime, "bin");
-  }
+  // No mime-type mapping; only WAV is supported now.
 
   private static class NamedByteArrayResource extends ByteArrayResource {
     private final String filename;

@@ -1,6 +1,7 @@
 package ru.hh.aiinterviewer.service;
 
 import java.util.UUID;
+import java.util.Objects;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import org.springframework.ai.chat.client.ChatClient;
@@ -39,7 +40,7 @@ public class InterviewService {
 
     String interviewPlan = prepareInterviewPlanChatClient
         .prompt()
-        .user(Prompts.getPrepareInterviewPlanPrompt(vacancy, request.getNumQuestions(), request.getInstructions()))
+        .user(Prompts.getPrepareInterviewPlanPrompt(vacancy, request.getNumQuestions(), request.getPlanPreferences()))
         .call()
         .content();
 
@@ -51,11 +52,15 @@ public class InterviewService {
   private Session createSession(CreateSessionRequestDto request, String interviewPlan) {
     Session session = sessionRepository.save(Session.builder()
         .vacancyUrl(request.getVacancyUrl())
+        .mode(request.getMode())
+        .roleName(request.getRoleName())
         .status(SessionStatus.PLANNED)
         .numQuestions(request.getNumQuestions())
         .interviewPlan(interviewPlan)
-        .instructions(request.getInstructions())
-        .communicationStyle(request.getCommunicationStyle())
+        .planPreferences(request.getPlanPreferences())
+        .interviewFormat(request.getInterviewFormat())
+        .communicationStylePreset(request.getCommunicationStylePreset())
+        .communicationStyleFreeform(request.getCommunicationStyleFreeform())
         .build());
     sessionRepository.flush();
     return session;
@@ -79,7 +84,7 @@ public class InterviewService {
 
     String userTextMessage = switch (MessageType.fromValue(userMessage.getType())) {
       case TEXT -> userMessage.getMessage();
-      case AUDIO -> transcriptionService.transcribe(userMessage.getAudioBase64(), userMessage.getAudioMimeType());
+      case AUDIO -> transcriptionService.transcribe(userMessage.getAudioBase64(), null);
     };
 
     if (MessageTrigger.START.isTrigger(userTextMessage)) {
@@ -113,7 +118,7 @@ public class InterviewService {
 
     String userTextMessage = switch (MessageType.fromValue(userMessage.getType())) {
       case TEXT -> userMessage.getMessage();
-      case AUDIO -> transcriptionService.transcribe(userMessage.getAudioBase64(), userMessage.getAudioMimeType());
+      case AUDIO -> transcriptionService.transcribe(userMessage.getAudioBase64(), null);
     };
 
     if (MessageTrigger.START.isTrigger(userTextMessage)) {
@@ -127,7 +132,7 @@ public class InterviewService {
 
   private String performChatInteraction(Session session, String userMessage) {
     return interviewerChatClient.prompt()
-        .system(Prompts.getInterviewerPrompt(session.getInterviewPlan(), session.getCommunicationStyle()))
+        .system(Prompts.getInterviewerPrompt(session.getInterviewPlan(), session.getCommunicationStylePreset()))
         .user(userMessage)
         .advisors(advisorSpec -> advisorSpec.param(ChatMemory.CONVERSATION_ID, session.getId().toString()))
         .call()
@@ -139,7 +144,7 @@ public class InterviewService {
     SseEmitter sseEmitter = new SseEmitter(0L);
 
     interviewerChatClient.prompt()
-        .system(Prompts.getInterviewerPrompt(session.getInterviewPlan(), session.getCommunicationStyle()))
+        .system(Prompts.getInterviewerPrompt(session.getInterviewPlan(), session.getCommunicationStylePreset()))
         .user(userMessage)
         .advisors(advisorSpec -> advisorSpec.param(ChatMemory.CONVERSATION_ID, session.getId().toString()))
         .stream()
@@ -159,9 +164,10 @@ public class InterviewService {
   @SneakyThrows
   private void processToken(ChatResponse response, StringBuilder answerBuilder, SseEmitter emitter) {
     var token = response.getResult().getOutput();
-    if (token.getText() != null) {
-      answerBuilder.append(token.getText());
-      emitter.send(token.getText());
+    String text = token.getText();
+    if (text != null) {
+      answerBuilder.append(text);
+      emitter.send(text);
     }
   }
 
