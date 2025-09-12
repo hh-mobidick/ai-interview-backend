@@ -1,0 +1,24 @@
+package ru.hh.aiinterviewer.api.dto;
+
+import lombok.Getter;
+import lombok.RequiredArgsConstructor;
+
+@RequiredArgsConstructor
+public enum ApiErrorCode {
+
+  VACANCY_NOT_PARSABLE("VACANCY_NOT_PARSABLE"),
+  INVALID_INPUT("INVALID_INPUT"),
+  FILE_TYPE_NOT_SUPPORTED("FILE_TYPE_NOT_SUPPORTED"),
+  FILE_TOO_LARGE("FILE_TOO_LARGE"),
+  UNSUPPORTED_AUDIO_FORMAT("UNSUPPORTED_AUDIO_FORMAT"),
+  INVALID_STATUS_TRANSITION("INVALID_STATUS_TRANSITION"),
+  SESSION_COMPLETED("SESSION_COMPLETED"),
+  NOT_FOUND("NOT_FOUND"),
+  UNAUTHORIZED("UNAUTHORIZED"),
+  INTERNAL_ERROR("INTERNAL_ERROR");
+
+  @Getter
+  private final String code;
+}
+
+
