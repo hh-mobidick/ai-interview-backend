@@ -6,37 +6,41 @@
 
 ---
 
-## 2. Основной флоу
+## 2. Основной флоу (v1.3)
 
-1. **Создание сессии** (`POST /sessions`)
-    - Вход: `vacancyUrl`, опционально `numQuestions`, опционально `instructions`, опционально `communicationStyle`.
-    - Бэкенд парсит вакансию с hh.ru и формирует план интервью.
-    - Генерируется вступительное сообщение: краткая сводка вакансии и план интервью.
-    - Статус сессии = `planned`.
-    - Ответ содержит `Session` с `sessionId`, статусом и первым сообщением (план).
+1. **Создание сессии**:
+    - JSON: `POST /sessions` — режимы `mode=vacancy|role`.
+      - `mode=vacancy`: источники — один из `vacancyUrl | vacancyText` (или файл в multipart).
+      - `mode=role`: обязателен `roleName` (см. автодополнение `GET /roles/suggest`).
+      - Доп. параметры: `numQuestions(1..50)`, `planPreferences`, `interviewFormat=training|moderate|realistic`, `communicationStylePreset`, `communicationStyleFreeform`.
+    - Multipart: `POST /sessions/form` — поддержка `vacancyFile` (.txt | .pdf | .docx) + те же поля.
+    - На выходе — объект `Session` со статусом `planned` и планом интервью.
 
-2. **Запуск интервью** (`POST /sessions/{sessionId}/messages`)
-    - Пользователь отправляет `"Начать интервью"`.
-    - Статус = `ongoing`.
-    - Ассистент начинает интервью: задаёт по одному вопросу.
+2. **Коррекция плана (статус planned)**:
+    - Любое обычное сообщение (не команда «Начать интервью») → перегенерация плана с учётом правок; остаёмся в `planned`.
 
-3. **Проведение Q&A**
-    - Всего вопросов: `numQuestions`.
-    - Формат: вопрос → ответ → следующий вопрос.
-    - Ответ можно отправлять текстом или аудио; аудио автоматически транскрибируется в текст.
-    - Все сообщения сохраняются в БД.
+3. **Запуск интервью (переход planned → ongoing)**:
+    - Пользователь отправляет команду «Начать интервью».
+    - Ассистент начинает задавать вопросы по плану.
 
-4. **Завершение**
-    - После последнего вопроса или команды завершения ассистент выводит строку `Интервью завершено` и даёт развёрнутый фидбек (сильные/слабые стороны, соответствие вакансии, рекомендации).
-    - Статус = `completed`.
+4. **Проведение Q&A (статус ongoing)**:
+    - Формат: вопрос → ответ → следующий вопрос; возможно SSE поток.
+    - Сообщения: текст или аудио (только WAV в `audioBase64`).
+
+5. **Фидбек (переход ongoing → feedback)**:
+    - Команда «Обратная связь» переводит в режим обсуждения и даёт развёрнутый фидбек.
+
+6. **Завершение (feedback → completed или ongoing → completed)**:
+    - Команда «Завершить интервью» завершает сессию (первая строка ответа — «Интервью завершено»), далее финальный отзыв.
 
 ---
 
 ## 3. Статусы сессии
 
-- **`planned`** — план интервью построен, ждём подтверждения («Начать интервью»).
-- **`ongoing`** — идёт интервью (Q&A).
-- **`completed`** — интервью завершено, выдан финальный фидбек.
+- **`planned`** — план построен; можно корректировать свободным текстом; «Начать интервью» → `ongoing`.
+- **`ongoing`** — идёт интервью (Q&A); «Обратная связь» → `feedback`; «Завершить интервью» → `completed`.
+- **`feedback`** — обсуждение оценки и рекомендации; «Завершить интервью» → `completed`.
+- **`completed`** — сессия завершена; любые попытки писать → HTTP 410.
 
 ---
 
@@ -55,253 +59,58 @@
 - **InterviewService** — оркестрация сессии: смена статусов, ведение диалога, сохранение сообщений.
 - **InterviewQueryService** — выдача информации по сессии.
 - **TranscriptionService** — транскрибирует аудио (base64) пользователя в текст (Spring AI / OpenAI).
-- **VacancyService** — загрузка и нормализация описания вакансии с hh.ru.
+- **VacancyService** — парсинг вакансии по URL (включая не hh.ru), извлечение текста из `.txt/.pdf/.docx` (Apache Tika), нормализация.
 - **Prompts** — шаблоны промптов (план интервью, системный промпт интервьюера).
 - **SessionChatMemory** — хранение и подготовка контекста/истории сообщений для LLM по сессии.
 - **Repository слой** — `SessionRepository` (Spring Data JPA) для сессий.
 - **Конфигурация** — `ApplicationConfig`, `ProxyConfig` (опциональный прокси для исходящих запросов), `CorsConfig`.
 - **Утилиты** — `JsonUtils`.
 
-### Таблицы
-- **sessions**: `id, vacancy_url, vacancy_title, status, num_questions, instructions, communicaton_style, interview_plan, created_at, started_at, ended_at`
-- **messages**: `id, session_id, role, content, created_at`
+### Таблицы (основное)
+- `sessions`: `id, mode, role_name, vacancy_url, status(planned|ongoing|feedback|completed), num_questions, interview_plan, interview_format(training|moderate|realistic), plan_preferences, communication_style_preset, communication_style_freeform, created_at, started_at, ended_at`
+- `messages`: `id, session_id, role, content, created_at [, type]`
 
 ---
 
 ## 5. OpenAPI 3.0 (Swagger) спецификация
 
-```yaml
-openapi: 3.0.3
-info:
-  title: AI Interview Backend API
-  version: "1.0"
-servers:
-  - url: https://api.example.com/
-    description: Базовый URL API
-components:
-  schemas:
-    CreateSessionRequest:
-      type: object
-      required:
-        - vacancyUrl
-      properties:
-        vacancyUrl:
-          type: string
-          description: URL вакансии на hh.ru
-          example: "https://hh.ru/vacancy/123456"
-        numQuestions:
-          type: integer
-          description: Количество вопросов в интервью (по умолчанию 5)
-          example: 5
-        instructions:
-          type: string
-          description: Кастомные инструкции для составления интервью
-          example: "Фокусируйся на практических кейсах и примерах проектов."
-        communicationStyle:
-          type: string
-          description: Особые пожелания о стиле общения
-          example: "Общение в дружелюбном, располагающем стиле на «ты»."
-    SessionStatusResponse:
-      type: object
-      properties:
-        status:
-          $ref: "#/components/schemas/SessionStatus"
-    MessageRequest:
-      type: object
-      required:
-        - type
-      properties:
-        type:
-          type: string
-          enum: [ text, audio ]
-          description: Тип сообщения
-          example: text
-        message:
-          type: string
-          description: Текст сообщения (обязательно для type=text)
-          example: "Начать интервью"
-        audioBase64:
-          type: string
-          description: Бинарные данные аудио в base64 (обязательно для type=audio)
-        audioMimeType:
-          type: string
-          description: MIME-тип аудио (например, audio/webm, audio/mpeg). Обязательно для type=audio
-    MessageResponse:
-      type: object
-      properties:
-        sessionId:
-          type: string
-          example: "f3c1b9be-6b2a-4d3c-9a51-5d2a1c4a1a45"
-        message:
-          type: string
-          description: Сообщение ассистента (вопрос или финальное сообщение с фидбеком)
-          example: "Вопрос 1/5. Расскажите о вашем опыте со Spring Boot..."
-        interviewComplete:
-          type: boolean
-          description: true — интервью завершено (текущее message содержит финальный фидбек)
-          example: false
-    Session:
-      type: object
-      properties:
-        sessionId:
-          type: string
-        vacancyUrl:
-          type: string
-          example: "https://hh.ru/vacancy/123456"
-        status:
-          $ref: "#/components/schemas/SessionStatus"
-        numQuestions:
-          type: integer
-          example: 5
-        startedAt:
-          type: string
-          format: date-time
-        endedAt:
-          type: string
-          format: date-time
-        instructions:
-          type: string
-          description: Кастомные инструкции (если заданы при создании)
-        messages:
-          type: array
-          description: История диалога
-          items:
-            type: object
-            properties:
-              role:
-                type: string
-                enum: [assistant, user]
-                example: "assistant"
-              content:
-                type: string
-                example: "Роль: ... План интервью: ... Если план подходит — нажмите 'Начать интервью'."
-    SessionStatus:
-      type: string
-      enum: [ planned, ongoing, completed ]
-      example: "planned"
-paths:
-  /sessions:
-    post:
-      summary: Создать новую сессию интервью
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateSessionRequest"
-      responses:
-        "201":
-          description: Сессия создана
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Session"
-        "400":
-          description: Некорректный запрос
-        "500":
-          description: Ошибка сервера
-  /sessions/{sessionId}/messages:
-    post:
-      summary: Отправить сообщение пользователя и получить ответ ассистента
-      parameters:
-        - name: sessionId
-          in: path
-          required: true
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/MessageRequest"
-      responses:
-        "200":
-          description: Ответ ассистента
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/MessageResponse"
-        "404":
-          description: Сессия не найдена
-        "410":
-          description: Сессия завершена
-        "500":
-          description: Ошибка сервера
-  /sessions/{sessionId}/messages/stream:
-    post:
-      summary: Отправить сообщение пользователя и получить ответ ассистента в виде stream
-      parameters:
-        - name: sessionId
-          in: path
-          required: true
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/MessageRequest"
-      responses:
-        "200":
-          description: Ответ ассистента
-          content:
-            text/event-stream:
-              schema:
-                type: string
-                description:
-                  SSE поток токенов ответа ассистента
-              examples:
-                stream:
-                  summary: Пример SSE потока
-                  value: |
-                    data: Вопрос 1/5. Расскажите о вашем опыте со Spring
+Актуальная спецификация — `src/main/resources/docs/swagger.yaml` (версия 1.3). Также доступна по `GET /swagger.yaml` и в Swagger UI.
 
-                    data:  Boot и микросервисами?
+Ключевые схемы:
+- `CreateSessionRequestJson` и `CreateSessionRequestMultipart` (см. режимы `vacancy|role`).
+- `MessageRequest` (`type: text|audio`, `audioBase64` — только WAV).
+- `Session`, `SessionStatusResponse`, `ApiError`.
 
-        "404":
-          description: Сессия не найдена
-        "410":
-          description: Сессия завершена
-        "500":
-          description: Ошибка сервера
-  /sessions/{sessionId}:
-    get:
-      summary: Получить состояние сессии и историю сообщений
-      parameters:
-        - name: sessionId
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Состояние сессии
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Session"
-        "404":
-          description: Сессия не найдена
-  /sessions/{sessionId}/status:
-    get:
-      summary: Получить состояние сессии и историю сообщений
-      parameters:
-        - name: sessionId
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Состояние сессии
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/SessionStatusResponse"
-        "404":
-          description: Сессия не найдена
+Основные эндпойнты:
+- `POST /sessions` — создать сессию (JSON).
+- `POST /sessions/form` — создать сессию (multipart, файл вакансии).
+- `POST /sessions/{sessionId}/messages` — отправить сообщение и получить ответ.
+- `POST /sessions/{sessionId}/messages/stream` — SSE поток (`text/event-stream`, строки `data: <chunk>`).
+- `GET /sessions/{sessionId}` — получить состояние и историю.
+- `GET /sessions/{sessionId}/status` — получить статус.
+- `GET /roles/suggest?q=...` — подсказки по ролям.
+
+Примеры:
+```bash
+curl -X POST http://localhost:10000/sessions \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer $AUTH_TOKEN' \
+  -d '{
+    "mode": "vacancy",
+    "vacancyUrl": "https://example.com/vacancy/123",
+    "numQuestions": 7,
+    "planPreferences": "Сделай упор на архитектуру и SQL",
+    "interviewFormat": "moderate",
+    "communicationStylePreset": "friendly_ty"
+  }'
+
+curl -X POST http://localhost:10000/sessions/form \
+  -H 'Authorization: Bearer $AUTH_TOKEN' \
+  -F mode=vacancy -F vacancyFile=@job.txt -F numQuestions=5
+
+curl -X POST http://localhost:10000/sessions/{id}/messages \
+  -H 'Content-Type: application/json' -H 'Authorization: Bearer $AUTH_TOKEN' \
+  -d '{"type":"text","message":"Начать интервью"}'
 ```
 ---
 
@@ -412,10 +221,18 @@ docker compose stop postgres
 
 ## Формат и команды интервью
 
-- Команды этапов:
-  - «План интервью»: стартовая команда. Ассистент приветствует и кратко описывает вакансию, цели и темы интервью. Далее ожидается ввод "Начать интервью".
-  - «Начать интервью»: ассистент переходит к первому вопросу.
-  - «Завершить интервью»: немедленное завершение. Ассистент выводит на первой строке фразу: `Интервью завершено`, затем даёт финальный фидбек.
+- Команды этапов (точные триггеры сообщений пользователя):
+  - `План интервью` — стартовая команда. Краткая сводка вакансии/структуры.
+  - `Начать интервью` — переход к первому вопросу.
+  - `Обратная связь` — переход в режим обсуждения результатов (статус `feedback`).
+  - `Завершить интервью` — немедленное завершение (первая строка ответа — `Интервью завершено`), далее финальный фидбек.
+
+  Правила обработки триггеров:
+  - Сопоставление нечувствительно к регистру и допускает, что пользовательский текст начинается с триггерной фразы (например, `Начать интервью, пожалуйста`).
+  - В `planned` разрешён только `Начать интервью`. Сообщения, не начинающиеся с этой команды, трактуются как правки плана; команды `Обратная связь` и `Завершить интервью` в `planned` → 409 (`INVALID_STATUS_TRANSITION`).
+  - В `ongoing` разрешены `Обратная связь` и `Завершить интервью`; `Начать интервью` → 409.
+  - В `feedback` разрешено `Завершить интервью`; `Начать интервью` → 409.
+  - При завершении ассистент обязан вывести точную строку `Интервью завершено` первой строкой ответа.
 
 - Формат основного вопроса:
   - `Вопрос X/N (Тема: <...>): …?`
@@ -423,5 +240,46 @@ docker compose stop postgres
 - Формат уточняющего вопроса:
   - `Уточняющий вопрос (тема: <...>): …?`
 
-- Стиль общения:
-  - По умолчанию дружелюбный, на «ты». Можно задать через `communicationStyle` при создании сессии.
+- Стиль общения и формат:
+  - По умолчанию `communicationStylePreset` не задан → нейтральный дружелюбный тон.
+  - `interviewFormat`: `training` (больше пояснений), `moderate` (по умолчанию), `realistic` (минимум подсказок).
+
+## Ограничения и валидации
+
+- Аудио: только WAV (передаётся в `audioBase64`). Базовая валидация RIFF/WAVE, `fmt`/`data` chunk'и, 1–2 канала, частота 8–48 кГц. Размер по умолчанию ≤ 25 МБ (настраивается).
+- `numQuestions`: 1..50.
+- `mode=vacancy`: обязателен хотя бы один источник (`vacancyUrl | vacancyText | vacancyFile`).
+- `mode=role`: обязателен `roleName`.
+
+## SSE поведение
+
+- `POST /sessions/{sessionId}/messages/stream` возвращает `text/event-stream`.
+- Каждый токен модели отдаётся в строке формата `data: <chunk>` и завершается переводом строки. Дополнительные служебные события (`event:`) не используются.
+- Соединение закрывается, когда ответ полностью сформирован. Если в ответе присутствует триггер завершения, сессия помечается как `completed`.
+
+## Ошибки (единый формат ApiError)
+
+`{"code": "...", "message": "...", "details": {}}`
+
+- 400: `VACANCY_NOT_PARSABLE`, `INVALID_INPUT`, `FILE_TYPE_NOT_SUPPORTED`, `FILE_TOO_LARGE`, `UNSUPPORTED_AUDIO_FORMAT`.
+- 401: `UNAUTHORIZED` (если включена авторизация по токену).
+- 404: `NOT_FOUND`.
+- 409: `INVALID_STATUS_TRANSITION`.
+- 410: `SESSION_COMPLETED`.
+- 500: `INTERNAL_ERROR`.
+
+Пример:
+```json
+{
+  "code": "INVALID_STATUS_TRANSITION",
+  "message": "Command is not allowed in planned status"
+}
+```
+
+## Конфигурация
+
+- Токен API: `auth.token` (заголовок `Authorization: Bearer <token>`).
+- Лимиты (см. `application.yaml` → `app.*`):
+  - `app.max-file-size-bytes` (по умолчанию 5 МБ)
+  - `app.max-audio-size-bytes` (по умолчанию 25 МБ)
+  - `app.min-audio-sample-rate` / `app.max-audio-sample-rate` (по умолчанию 8–48 кГц)

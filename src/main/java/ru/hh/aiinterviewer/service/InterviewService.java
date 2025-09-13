@@ -119,6 +119,8 @@ public class InterviewService {
         assistantAnswer = performChatInteraction(session, userTextMessage);
         sessionRepository.save(session);
         return buildNextMessageResponse(session, assistantAnswer);
+      } else if (MessageTrigger.FEEDBACK.isTrigger(userTextMessage) || MessageTrigger.FINISH.isTrigger(userTextMessage)) {
+        throw new InvalidStatusTransitionException("Command is not allowed in planned status");
       } else {
         // Plan correction mode: keep PLANNED, regenerate plan
         String correctedPlan = prepareInterviewPlanChatClient
@@ -132,6 +134,9 @@ public class InterviewService {
         return buildNextMessageResponse(session, assistantAnswer);
       }
     } else if (session.getStatus() == SessionStatus.ONGOING) {
+      if (MessageTrigger.START.isTrigger(userTextMessage)) {
+        throw new InvalidStatusTransitionException("Command is not allowed in ongoing status");
+      }
       if (MessageTrigger.FEEDBACK.isTrigger(userTextMessage)) {
         session.setStatus(SessionStatus.FEEDBACK);
         assistantAnswer = interviewerChatClient.prompt()
@@ -156,6 +161,9 @@ public class InterviewService {
         return buildFeedbackMessageResponse(session, assistantAnswer);
       }
     } else if (session.getStatus() == SessionStatus.FEEDBACK) {
+      if (MessageTrigger.START.isTrigger(userTextMessage)) {
+        throw new InvalidStatusTransitionException("Command is not allowed in feedback status");
+      }
       if (MessageTrigger.FINISH.isTrigger(userTextMessage)) {
         session.completeInterview();
         assistantAnswer = performChatInteraction(session, MessageTrigger.COMPLETE.getValue());
@@ -196,6 +204,8 @@ public class InterviewService {
     if (session.getStatus() == SessionStatus.PLANNED) {
       if (MessageTrigger.START.isTrigger(userTextMessage)) {
         session.startInterview();
+      } else if (MessageTrigger.FEEDBACK.isTrigger(userTextMessage) || MessageTrigger.FINISH.isTrigger(userTextMessage)) {
+        throw new InvalidStatusTransitionException("Command is not allowed in planned status");
       } else {
         String correctedPlan = prepareInterviewPlanChatClient
             .prompt()
@@ -207,6 +217,9 @@ public class InterviewService {
       sessionRepository.save(session);
       return performChatInteractionStreaming(session, userTextMessage);
     } else if (session.getStatus() == SessionStatus.ONGOING) {
+      if (MessageTrigger.START.isTrigger(userTextMessage)) {
+        throw new InvalidStatusTransitionException("Command is not allowed in ongoing status");
+      }
       if (MessageTrigger.FEEDBACK.isTrigger(userTextMessage)) {
         session.setStatus(SessionStatus.FEEDBACK);
       } else if (MessageTrigger.FINISH.isTrigger(userTextMessage)) {
@@ -215,6 +228,9 @@ public class InterviewService {
       sessionRepository.save(session);
       return performChatInteractionStreaming(session, userTextMessage);
     } else if (session.getStatus() == SessionStatus.FEEDBACK) {
+      if (MessageTrigger.START.isTrigger(userTextMessage)) {
+        throw new InvalidStatusTransitionException("Command is not allowed in feedback status");
+      }
       if (MessageTrigger.FINISH.isTrigger(userTextMessage)) {
         session.completeInterview();
       }
