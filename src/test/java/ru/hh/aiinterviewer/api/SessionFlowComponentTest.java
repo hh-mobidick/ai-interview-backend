@@ -257,6 +257,10 @@ public class SessionFlowComponentTest {
         .andReturn().getResponse().getContentAsString();
     SessionResponseDto histDto = objectMapper.readValue(hist, SessionResponseDto.class);
     org.assertj.core.api.Assertions.assertThat(histDto.getSessionId()).isEqualTo(sessionId);
+    // messages should contain createdAt for each item
+    if (!histDto.getMessages().isEmpty()) {
+      org.assertj.core.api.Assertions.assertThat(histDto.getMessages().get(0).getCreatedAt()).isNotNull();
+    }
   }
 
   @Test

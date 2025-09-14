@@ -51,6 +51,7 @@ public class InterviewQueryService {
             .map(m -> SessionMessageDto.builder()
                 .role(m.getRole().getValue())
                 .content(m.getContent())
+                .createdAt(m.getCreatedAt())
                 .build())
             .toList())
         .build();

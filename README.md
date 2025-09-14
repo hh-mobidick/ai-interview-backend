@@ -278,7 +278,7 @@ docker compose stop postgres
 
 ## Конфигурация
 
-- Токен API: `auth.token` (заголовок `Authorization: Bearer <token>`).
+- Токен API: `auth.token` (заголовок `Authorization: Bearer <token>`). Если токен задан — эндпоинты требуют Bearer-токен; в Swagger описана схема `bearerAuth` и глобальное требование безопасности.
 - Лимиты (см. `application.yaml` → `app.*`):
   - `app.max-file-size-bytes` (по умолчанию 5 МБ)
   - `app.max-audio-size-bytes` (по умолчанию 25 МБ)

@@ -1,5 +1,6 @@
 package ru.hh.aiinterviewer.api.dto;
 
+import java.time.OffsetDateTime;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Builder;
 import lombok.Data;
@@ -12,4 +13,5 @@ public class SessionMessageDto {
   private String role;
   @NotBlank
   private String content;
+  private OffsetDateTime createdAt;
 }
